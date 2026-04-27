@@ -19,6 +19,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=180, help="Ollama timeout seconds")
     parser.add_argument("--retries", type=int, default=2, help="Ollama retry count")
     parser.add_argument("--no-llm", action="store_true", help="Disable LLM and use rule mode only")
+    parser.add_argument(
+        "--layout-mode",
+        choices=["classic", "formal"],
+        default="classic",
+        help="PPT content layout mode (title is always preserved)",
+    )
+    parser.add_argument(
+        "--theme",
+        choices=["formal_blue", "corporate_gray", "legal_red"],
+        default="formal_blue",
+        help="Theme palette for formal layout mode",
+    )
+    parser.add_argument(
+        "--diversity",
+        choices=["low", "medium", "high"],
+        default="medium",
+        help="Layout variety level for formal mode",
+    )
+    parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducible layout selection")
     return parser.parse_args()
 
 
@@ -34,6 +53,10 @@ def main() -> int:
             timeout_sec=args.timeout,
             retries=args.retries,
             use_llm=not args.no_llm,
+            layout_mode=args.layout_mode,
+            theme=args.theme,
+            diversity=args.diversity,
+            seed=args.seed,
         )
         return 0
     except Exception as exc:

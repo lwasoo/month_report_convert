@@ -1,0 +1,52 @@
+name: Build Desktop Packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Build EXE
+        shell: pwsh
+        run: .\scripts\build_windows.ps1 -PythonExe python -AppName MonthReportConverter
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MonthReportConverter-windows
+          path: dist/MonthReportConverter.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Build app
+        run: bash ./scripts/build_macos.sh
+
+      - name: Zip macOS app
+        run: ditto -c -k --sequesterRsrc --keepParent dist/MonthReportConverter.app dist/MonthReportConverter-macos.zip
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MonthReportConverter-macos
+          path: dist/MonthReportConverter-macos.zip

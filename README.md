@@ -21,7 +21,11 @@ python .\docx_to_ppt_converter.py `
   --docx "C:\Users\vegta\Desktop\25立讯技术法务工作八月报_August_V1(2).docx" `
   --template "C:\Users\vegta\Desktop\法务部月汇报总结V1(1).pptx" `
   --output "C:\Users\vegta\Desktop\法务部月汇报总结_自动填充.pptx" `
-  --model "qwen2.5:7b-instruct-q4_K_M"
+  --model "qwen2.5:14b-instruct-q4_K_M" `
+  --layout-mode formal `
+  --theme formal_blue `
+  --diversity high `
+  --seed 7
 ```
 
 ## 3) 可选参数
@@ -30,6 +34,10 @@ python .\docx_to_ppt_converter.py `
 - `--timeout`：单次模型调用超时秒数，默认 `180`
 - `--retries`：模型失败重试次数，默认 `2`
 - `--no-llm`：关闭模型，只用规则匹配与改写
+- `--layout-mode`：内容排版模式（`classic`/`formal`，默认 `classic`）
+- `--theme`：正式布局主题（`formal_blue`/`corporate_gray`/`legal_red`）
+- `--diversity`：版式多样化程度（`low`/`medium`/`high`）
+- `--seed`：版式随机种子（同 seed 可复现）
 
 ## 4) 实现原理
 
@@ -83,6 +91,66 @@ python .\docx_to_ppt_converter.py `
 ## 6) 工程结构（模块化）
 
 - `docx_to_ppt_converter.py`：CLI 入口（参数解析 + 调用引擎）
+- `gui_converter.py`：GUI 入口（图形界面运行转换）
 - `report_converter/constants.py`：指标与标签常量
 - `report_converter/models.py`：数据结构（`TemplateSlide` / `SlideDraft`）
 - `report_converter/engine.py`：核心逻辑（解析、匹配、改写、校验、写回）
+
+## 7) GUI 使用
+
+```powershell
+python .\gui_converter.py
+```
+
+- 启动后会自动检测本机 Ollama 模型并填充下拉列表。
+- 也可点击“检测模型”手动刷新模型列表。
+- 可在“排版模式”选择 `formal`（正式汇报布局）或 `classic`（旧版布局）。
+- `formal` 下可继续选择主题、版式多样化程度与 `seed`。
+- 选择 `Word 路径`、`模板路径`、`输出路径` 后点击“开始转换”。
+- 下方“运行日志”会实时显示转换过程和错误信息。
+
+## 8) 打包成客户端（Windows/macOS）
+
+### 8.1 Windows 一键打包 EXE
+
+```powershell
+cd C:\Users\vegta\Desktop\month_report_convert
+powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
+```
+
+产物：
+- `dist\MonthReportConverter.exe`
+
+### 8.2 macOS 打包 .app
+
+```bash
+cd /path/to/month_report_convert
+bash ./scripts/build_macos.sh
+```
+
+产物：
+- `dist/MonthReportConverter.app`
+
+### 8.3 GitHub 自动构建（跨电脑推荐）
+
+仓库已提供工作流：
+- `.github/workflows/build-desktop.yml`
+
+触发方式：
+- 打 tag（如 `v1.0.0`）后自动构建 Windows + macOS 产物
+- 或在 GitHub Actions 手动点 `Build Desktop Packages`
+
+### 8.4 对方电脑首次使用前置条件
+
+客户端本身可即开即用，但推理依赖本机 Ollama：
+
+1. 安装并启动 Ollama  
+2. 拉取模型（例如）：
+
+```bash
+ollama pull qwen2.5:14b-instruct-q4_K_M
+```
+
+3. 确保 `http://127.0.0.1:11434` 可访问
+
+> 如果未满足前置条件，GUI 会在“检测模型/运行日志”里提示失败原因。
