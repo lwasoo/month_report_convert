@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import locale
 import os
 import queue
 import subprocess
@@ -294,7 +295,7 @@ class ConverterGUI:
             if not cli_script:
                 messagebox.showerror("启动失败", "未找到转换脚本 docx_to_ppt_converter.py。")
                 return
-            cmd = [sys.executable, str(cli_script), *args]
+            cmd = [sys.executable, "-u", str(cli_script), *args]
 
         self.append_log("[INFO] 开始转换...")
         self.append_log("[CMD] " + " ".join(f'"{x}"' if " " in x else x for x in cmd))
@@ -318,17 +319,23 @@ class ConverterGUI:
             child_env = os.environ.copy()
             child_env["PYTHONIOENCODING"] = "utf-8"
             child_env["PYTHONUTF8"] = "1"
+            child_env["PYTHONUNBUFFERED"] = "1"
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                text=False,
                 env=child_env,
+                bufsize=0,
             )
             assert self.process.stdout is not None
-            for line in self.process.stdout:
+            while True:
+                raw = self.process.stdout.readline()
+                if not raw:
+                    if self.process.poll() is not None:
+                        break
+                    continue
+                line = self._decode_output_line(raw)
                 self.log_queue.put(line.rstrip("\r\n"))
             code = self.process.wait()
             if code == 0:
@@ -339,6 +346,15 @@ class ConverterGUI:
             self.log_queue.put(f"[ERROR] 启动失败: {exc}")
         finally:
             self.process = None
+
+    @staticmethod
+    def _decode_output_line(raw: bytes) -> str:
+        for enc in ("utf-8", locale.getpreferredencoding(False), "gbk", "cp936"):
+            try:
+                return raw.decode(enc)
+            except Exception:
+                continue
+        return raw.decode("utf-8", errors="replace")
 
     def stop_convert(self) -> None:
         if self.process and self.process.poll() is None:

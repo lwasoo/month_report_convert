@@ -22,7 +22,7 @@ from .models import SlideDraft, TemplateSlide
 
 def log(message: str, level: str = "INFO") -> None:
     ts = dt.datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] [{level}] {message}")
+    print(f"[{ts}] [{level}] {message}", flush=True)
 
 
 def normalize_text(text: str) -> str:
