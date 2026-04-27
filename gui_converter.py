@@ -260,14 +260,7 @@ class ConverterGUI:
         if not self._validate_inputs():
             return
 
-        cli_script = self._resolve_cli_script()
-        if not cli_script:
-            messagebox.showerror("启动失败", "未找到转换脚本 docx_to_ppt_converter.py。")
-            return
-
-        cmd = [
-            sys.executable,
-            str(cli_script),
+        args = [
             "--docx",
             self.docx_var.get().strip(),
             "--template",
@@ -292,7 +285,16 @@ class ConverterGUI:
             self.seed_var.get().strip() or "0",
         ]
         if self.no_llm_var.get():
-            cmd.append("--no-llm")
+            args.append("--no-llm")
+
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--run-cli", *args]
+        else:
+            cli_script = self._resolve_cli_script()
+            if not cli_script:
+                messagebox.showerror("启动失败", "未找到转换脚本 docx_to_ppt_converter.py。")
+                return
+            cmd = [sys.executable, str(cli_script), *args]
 
         self.append_log("[INFO] 开始转换...")
         self.append_log("[CMD] " + " ".join(f'"{x}"' if " " in x else x for x in cmd))
@@ -347,6 +349,19 @@ class ConverterGUI:
 
 
 def main() -> int:
+    # For packaged EXE: allow background worker mode instead of opening another GUI window.
+    if "--run-cli" in sys.argv:
+        idx = sys.argv.index("--run-cli")
+        forward = [sys.argv[0], *sys.argv[idx + 1 :]]
+        import docx_to_ppt_converter
+
+        old_argv = sys.argv
+        try:
+            sys.argv = forward
+            return int(docx_to_ppt_converter.main())
+        finally:
+            sys.argv = old_argv
+
     root = tk.Tk()
     app = ConverterGUI(root)
     root.mainloop()
