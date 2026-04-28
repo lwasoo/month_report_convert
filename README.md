@@ -90,11 +90,28 @@ python .\docx_to_ppt_converter.py `
 
 ## 6) 工程结构（模块化）
 
-- `docx_to_ppt_converter.py`：CLI 入口（参数解析 + 调用引擎）
-- `gui_converter.py`：GUI 入口（图形界面运行转换）
-- `report_converter/constants.py`：指标与标签常量
-- `report_converter/models.py`：数据结构（`TemplateSlide` / `SlideDraft`）
-- `report_converter/engine.py`：核心逻辑（解析、匹配、改写、校验、写回）
+- `docx_to_ppt_converter.py`：Word 转 PPT CLI 入口
+- `sanitize_docx.py`：文档脱敏 / 还原 CLI 入口
+- `gui_converter.py`：GUI 启动入口（仅做转发）
+
+### 6.1 Word 转 PPT 路径
+
+- `report_converter/parsing.py`：Word / OCR / 章节读取
+- `report_converter/drafting.py`：选材、改写、指标提取
+- `report_converter/layout.py`：PPT 写回、分页、排版
+- `report_converter/engine.py`：总控编排
+
+### 6.2 脱敏 / 还原路径
+
+- `doc_sanitizer/engine.py`：脱敏扫描、映射合并、写回、还原
+- `report_converter/sanitizer.py`：兼容导出层（转发到 `doc_sanitizer`）
+
+### 6.3 GUI 路径
+
+- `gui_app/app.py`：GUI 主程序与共享逻辑
+- `gui_app/convert_tab.py`：月报转 PPT 页签逻辑
+- `gui_app/sanitize_tab.py`：脱敏页签逻辑
+- `gui_app/restore_tab.py`：还原页签逻辑
 
 ## 7) GUI 使用
 
@@ -154,3 +171,115 @@ ollama pull qwen2.5:14b-instruct-q4_K_M
 3. 确保 `http://127.0.0.1:11434` 可访问
 
 > 如果未满足前置条件，GUI 会在“检测模型/运行日志”里提示失败原因。
+## 9) Word 脱敏 / 还原
+
+当前已支持 `docx` 文件的本地脱敏与还原，适合把合同、月报、法务材料先做占位符替换，再交给外部 AI 处理。
+
+输出包含两部分：
+- 脱敏后的 `docx`
+- 映射文件 `json`
+
+占位符示例：
+- `__COMPANY_001__`
+- `__AMOUNT_001__`
+- `__TITLE_001__`
+- `__PROJECT_001__`
+
+### 9.1 CLI 脱敏
+
+```powershell
+python .\sanitize_docx.py sanitize `
+  --input "C:\input.docx" `
+  --output "C:\input_脱敏.docx" `
+  --mapping "C:\input_映射.json"
+```
+
+### 9.2 CLI 还原
+
+```powershell
+python .\sanitize_docx.py restore `
+  --input "C:\input_脱敏_AI修改后.docx" `
+  --output "C:\input_还原.docx" `
+  --mapping "C:\input_映射.json"
+```
+
+### 9.3 自定义敏感词
+
+可额外传入一份词表文件（一行一个）：
+
+```powershell
+python .\sanitize_docx.py sanitize `
+  --input "C:\input.docx" `
+  --output "C:\input_脱敏.docx" `
+  --mapping "C:\input_映射.json" `
+  --terms-file "C:\terms.txt"
+```
+
+### 9.3.1 可选 AI 辅助识别
+
+脱敏现在默认会优先使用本机 Ollama 做辅助识别；如果要关闭，可显式传 `--no-llm-assist`。
+
+如果本机已启动 Ollama，可直接这样使用：
+
+```powershell
+python .\sanitize_docx.py sanitize `
+  --input "C:\input.docx" `
+  --output "C:\input_脱敏.docx" `
+  --mapping "C:\input_映射.json" `
+  --use-llm-assist `
+  --model "qwen2.5:7b-instruct-q4_K_M" `
+  --ollama-url "http://127.0.0.1:11434"
+```
+
+说明：
+- AI 辅助只用于“补充候选敏感项”，不会参与还原
+- 程序会把文档按段分块送给本地模型识别
+- 最终仍建议在 GUI 的 `映射审核` 区人工确认
+- 如果模型不可用或调用失败，程序会自动回退到规则识别
+
+### 9.4 当前默认识别的敏感项
+
+- 公司主体
+- 诉讼 / 仲裁中的部分人名（按上下文与姓名模式识别）
+- 甲方 / 乙方 / 丙方
+- 金额
+- 合同或材料标题（`《...》`）
+- 项目名称
+- 案号 / 合同编号
+- 客户 / 供应商字段
+- 邮箱 / 手机号 / 长数字账号
+- 部分代码类标识（如项目编码、案件编码）
+
+### 9.5 GUI 审核流
+
+GUI 现在拆成两个独立页签：`脱敏` 和 `还原`。
+
+`脱敏` 页签走两阶段流程：
+
+1. 先点 `识别候选映射`
+2. 程序只生成内存中的候选映射，不会先输出脱敏文档和 JSON
+3. 在下方 `映射审核` 区修改
+4. 你可以：
+   - 启用 / 禁用某条替换
+   - 删除误识别项
+   - 手动新增映射：`敏感词` + `替换为`
+   - 勾选“启用本地模型辅助识别”后再重跑脱敏
+5. 确认没问题后，再点 `生成脱敏文档`
+6. 这一步才会真正输出：
+   - 脱敏后的 `docx`
+   - 最终映射 `json`
+
+这样可以保留前面已经确认过的映射，再继续补新映射，不需要每次从头来。
+
+### 9.6 当前策略说明
+
+- 自动识别目前是**偏保守**的：宁可少替一点，再交给人工补。
+- 映射文件现在使用 `entries` 结构，包含：
+  - `original`
+  - `placeholder`
+  - `category`
+  - `enabled`
+  - `source`
+- `restore` 时会按映射文件把占位符还原回原文。
+
+GUI 里也已新增单独的 `脱敏 / 还原` 页签。
