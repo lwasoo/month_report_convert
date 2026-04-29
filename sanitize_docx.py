@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI entrypoint for DOCX sanitization and restore."""
+"""CLI entrypoint for DOCX/PPTX sanitization and restore."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ import argparse
 from pathlib import Path
 
 from report_converter.common import log
-from doc_sanitizer.engine import restore_docx, sanitize_docx
+from doc_sanitizer import restore_file, sanitize_file
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Sanitize or restore sensitive content in Word DOCX files.")
+    parser = argparse.ArgumentParser(description="Sanitize or restore sensitive content in DOCX/PPTX files.")
     parser.add_argument("mode", choices=["sanitize", "restore"], help="Operation mode")
-    parser.add_argument("--input", required=True, type=Path, help="Input DOCX path")
-    parser.add_argument("--output", required=True, type=Path, help="Output DOCX path")
+    parser.add_argument("--input", required=True, type=Path, help="Input DOCX/PPTX path")
+    parser.add_argument("--output", required=True, type=Path, help="Output DOCX/PPTX path")
     parser.add_argument("--mapping", required=True, type=Path, help="Mapping JSON path")
     parser.add_argument("--terms-file", type=Path, help="Optional custom terms file, one term per line")
     parser.add_argument("--use-llm-assist", dest="use_llm_assist", action="store_true", default=True, help="Use local Ollama model to assist sensitive candidate detection (default: on)")
@@ -38,7 +38,7 @@ def main() -> int:
     args = parse_args()
     try:
         if args.mode == "sanitize":
-            sanitize_docx(
+            sanitize_file(
                 input_path=args.input,
                 output_path=args.output,
                 mapping_path=args.mapping,
@@ -50,7 +50,7 @@ def main() -> int:
                 retries=args.retries,
             )
         else:
-            restore_docx(
+            restore_file(
                 input_path=args.input,
                 output_path=args.output,
                 mapping_path=args.mapping,

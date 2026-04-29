@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from doc_sanitizer.engine import restore_docx
+from doc_sanitizer import restore_file
 
 
 class RestoreTabMixin:
@@ -37,11 +37,12 @@ class RestoreTabMixin:
         self.restore_log_text.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
 
     def _browse_restore_input(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("Word", "*.docx")])
+        path = filedialog.askopenfilename(filetypes=[("Supported", "*.docx *.pptx"), ("Word", "*.docx"), ("PowerPoint", "*.pptx")])
         if path:
             self.restore_input_var.set(path)
             if not self.restore_output_var.get():
-                self.restore_output_var.set(str(Path(path).with_name(f"{Path(path).stem}_还原.docx")))
+                suffix = Path(path).suffix.lower()
+                self.restore_output_var.set(str(Path(path).with_name(f"{Path(path).stem}_还原{suffix}")))
 
     def _browse_restore_mapping(self) -> None:
         path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
@@ -49,7 +50,7 @@ class RestoreTabMixin:
             self.restore_mapping_var.set(path)
 
     def _browse_restore_output(self) -> None:
-        path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Word", "*.docx")])
+        path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Supported", "*.docx *.pptx"), ("Word", "*.docx"), ("PowerPoint", "*.pptx")])
         if path:
             self.restore_output_var.set(path)
 
@@ -68,7 +69,7 @@ class RestoreTabMixin:
         input_path = Path(self.restore_input_var.get().strip())
         mapping_path = Path(self.restore_mapping_var.get().strip())
         output_path = self._unique_output_path(Path(self.restore_output_var.get().strip()))
-        restore_docx(input_path=input_path, output_path=output_path, mapping_path=mapping_path)
+        restore_file(input_path=input_path, output_path=output_path, mapping_path=mapping_path)
         self.log_queue.put(("restore", f"[INFO] 还原输入: {input_path}"))
         self.log_queue.put(("restore", f"[INFO] 使用映射: {mapping_path}"))
         self.log_queue.put(("restore", f"[INFO] 还原完成: {output_path}"))

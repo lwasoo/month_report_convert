@@ -6,7 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from doc_sanitizer.engine import apply_mapping_to_docx, scan_docx
+from doc_sanitizer import apply_mapping_to_file, read_mapping, scan_file
 from .defaults import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 
 
@@ -36,6 +36,8 @@ class SanitizeTabMixin:
         actions.grid(row=3, column=1, sticky="w", pady=(8, 0))
         self.initial_scan_button = ttk.Button(actions, text="识别候选映射", style="Primary.TButton", command=self.start_scan_mapping)
         self.initial_scan_button.pack(side="left")
+        self.load_mapping_button = ttk.Button(actions, text="载入映射 JSON", command=self.load_mapping_json)
+        self.load_mapping_button.pack(side="left", padx=(8, 0))
         self.rescan_button = ttk.Button(actions, text="按当前映射继续识别", command=self.rescan_mapping)
         self.rescan_button.pack(side="left", padx=(8, 0))
         self.apply_mapping_button = ttk.Button(actions, text="生成脱敏文档", command=self.apply_current_mapping)
@@ -145,17 +147,18 @@ class SanitizeTabMixin:
         self.mask_log_text.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
 
     def _browse_sanitize_input(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("Word", "*.docx")])
+        path = filedialog.askopenfilename(filetypes=[("Supported", "*.docx *.pptx"), ("Word", "*.docx"), ("PowerPoint", "*.pptx")])
         if path:
             self.sanitize_input_var.set(path)
             stem = Path(path).stem
+            suffix = Path(path).suffix.lower()
             if not self.sanitize_output_var.get():
-                self.sanitize_output_var.set(str(Path(path).with_name(f"{stem}_脱敏.docx")))
+                self.sanitize_output_var.set(str(Path(path).with_name(f"{stem}_脱敏{suffix}")))
             if not self.sanitize_mapping_var.get():
                 self.sanitize_mapping_var.set(str(Path(path).with_name(f"{stem}_映射.json")))
 
     def _browse_sanitize_output(self) -> None:
-        path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Word", "*.docx")])
+        path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Supported", "*.docx *.pptx"), ("Word", "*.docx"), ("PowerPoint", "*.pptx")])
         if path:
             self.sanitize_output_var.set(path)
 
@@ -163,6 +166,31 @@ class SanitizeTabMixin:
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
         if path:
             self.sanitize_mapping_var.set(path)
+
+    def load_mapping_json(self) -> None:
+        path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+        if not path:
+            return
+        try:
+            payload = read_mapping(Path(path))
+        except Exception as exc:
+            messagebox.showerror("载入失败", f"无法读取映射 JSON：{exc}")
+            return
+        self.current_mapping_data = payload
+        self.scan_ready = True
+        self.sanitize_mapping_var.set(path)
+        source_file = str(payload.get("source_file", "")).strip()
+        sanitized_file = str(payload.get("sanitized_file", "")).strip()
+        if source_file:
+            self.sanitize_input_var.set(source_file)
+        if sanitized_file:
+            self.sanitize_output_var.set(sanitized_file)
+        self._rebuild_mapping_metadata()
+        self._refresh_mapping_tree()
+        self.mapping_summary_var.set(self._mapping_summary_text())
+        self.sanitize_status_var.set("待确认")
+        self._update_sanitize_action_states()
+        self.log_queue.put(("sanitize", f"[INFO] 已载入映射 JSON: {path}"))
 
     def _validate_scan_inputs(self) -> bool:
         if not self.sanitize_input_var.get().strip():
@@ -190,7 +218,7 @@ class SanitizeTabMixin:
     def _scan_mapping_worker(self) -> None:
         input_path = Path(self.sanitize_input_var.get().strip())
         existing_map_path = Path(self.sanitize_mapping_var.get().strip())
-        payload = scan_docx(
+        payload = scan_file(
             input_path=input_path,
             custom_terms=[],
             use_llm_assist=self.sanitize_use_llm_var.get(),
@@ -228,7 +256,7 @@ class SanitizeTabMixin:
         mapping_path = self._unique_output_path(Path(self.sanitize_mapping_var.get().strip()))
         assert self.current_mapping_data is not None
         self.current_mapping_data["sanitized_file"] = str(output_path)
-        apply_mapping_to_docx(input_path, output_path, self.current_mapping_data, mapping_path)
+        apply_mapping_to_file(input_path, output_path, self.current_mapping_data, mapping_path)
         self.root.after(0, lambda: self._after_apply_complete(output_path, mapping_path))
 
     def _after_apply_complete(self, output_path: Path, mapping_path: Path) -> None:
