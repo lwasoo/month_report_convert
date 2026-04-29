@@ -8,6 +8,7 @@ import json
 import locale
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -38,11 +39,11 @@ def configure_windows_dpi() -> None:
 
 
 class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(self, root: tk.Tk, geometry: str | None = None) -> None:
         self.root = root
         self.root.title("月报工具箱")
-        self.root.geometry("1360x880")
-        self.root.minsize(1220, 780)
+        self.root.geometry(geometry or "1280x820")
+        self.root.minsize(1040, 700)
 
         self.log_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self.process: subprocess.Popen[bytes] | None = None
@@ -119,12 +120,12 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         style.configure("Mapping.Treeview.Heading", font=("Microsoft YaHei UI", 10, "bold"))
 
     def _build_ui(self) -> None:
-        shell = ttk.Frame(self.root, style="App.TFrame", padding=18)
+        shell = ttk.Frame(self.root, style="App.TFrame", padding=14)
         shell.pack(fill=tk.BOTH, expand=True)
         shell.columnconfigure(0, weight=1)
         shell.rowconfigure(1, weight=1)
 
-        header = ttk.Frame(shell, style="Header.TFrame", padding=(20, 18))
+        header = ttk.Frame(shell, style="Header.TFrame", padding=(18, 16))
         header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text="月报工具箱", style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
@@ -147,7 +148,7 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
     def _create_log_widget(self, parent: ttk.Frame) -> ScrolledText:
         widget = ScrolledText(
             parent,
-            height=28,
+            height=12,
             wrap=tk.WORD,
             font=("Cascadia Mono", 11),
             background="#0f1720",
@@ -403,6 +404,18 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
 
 
 def main() -> int:
+    geometry = None
+    if "--geometry" in sys.argv:
+        idx = sys.argv.index("--geometry")
+        if idx + 1 >= len(sys.argv):
+            print("missing value for --geometry, expected WxH", file=sys.stderr)
+            return 2
+        geometry = sys.argv[idx + 1]
+        if not re.fullmatch(r"\d+x\d+", geometry):
+            print("invalid --geometry format, expected WxH like 1366x768", file=sys.stderr)
+            return 2
+        del sys.argv[idx : idx + 2]
+
     if "--run-cli" in sys.argv:
         idx = sys.argv.index("--run-cli")
         forward = [sys.argv[0], *sys.argv[idx + 1 :]]
@@ -429,7 +442,7 @@ def main() -> int:
 
     configure_windows_dpi()
     root = tk.Tk()
-    ConverterGUI(root)
+    ConverterGUI(root, geometry=geometry)
     root.mainloop()
     return 0
 

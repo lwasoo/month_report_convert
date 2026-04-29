@@ -14,24 +14,27 @@ class SanitizeTabMixin:
     def _build_sanitize_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
+
         main = ttk.PanedWindow(parent, orient="horizontal")
         main.grid(row=0, column=0, sticky="nsew")
 
         left_card = ttk.Frame(main, style="Card.TFrame", padding=18)
         right_card = ttk.Frame(main, style="Card.TFrame", padding=18)
-        main.add(left_card, weight=6)
-        main.add(right_card, weight=4)
+        main.add(left_card, weight=5)
+        main.add(right_card, weight=5)
+
         left_card.columnconfigure(0, weight=1)
         left_card.rowconfigure(2, weight=1)
         right_card.columnconfigure(0, weight=1)
-        right_card.rowconfigure(1, weight=1)
+        right_card.rowconfigure(0, weight=1)
 
         scan_group = ttk.LabelFrame(left_card, text="1. 识别候选", style="Section.TLabelframe", padding=14)
         scan_group.grid(row=0, column=0, sticky="ew")
         scan_group.columnconfigure(1, weight=1)
-        self._add_path_row(scan_group, 0, "原始 DOCX", self.sanitize_input_var, self._browse_sanitize_input)
+        self._add_path_row(scan_group, 0, "原始文件", self.sanitize_input_var, self._browse_sanitize_input)
         self._add_path_row(scan_group, 1, "脱敏输出", self.sanitize_output_var, self._browse_sanitize_output)
         self._add_path_row(scan_group, 2, "最终映射 JSON", self.sanitize_mapping_var, self._browse_sanitize_mapping)
+
         actions = ttk.Frame(scan_group, style="Card.TFrame")
         actions.grid(row=3, column=1, sticky="w", pady=(8, 0))
         self.initial_scan_button = ttk.Button(actions, text="识别候选映射", style="Primary.TButton", command=self.start_scan_mapping)
@@ -42,33 +45,53 @@ class SanitizeTabMixin:
         self.rescan_button.pack(side="left", padx=(8, 0))
         self.apply_mapping_button = ttk.Button(actions, text="生成脱敏文档", command=self.apply_current_mapping)
         self.apply_mapping_button.pack(side="left", padx=(8, 0))
+
         self.ai_notice_text = (
-            "发给外部 AI 前请注意：不要修改、拆分、翻译或删除占位符，"
-            "例如 __COMPANY_001__ / __PERSON_003__。"
-            "可改写上下文内容，但必须原样保留这些占位符。"
-            "如果要多轮重新识别，建议先批量添加你确定的重要项目/名称，再删除误识别项。"
+            "发给外部 AI 前请注意：不要修改、拆分、翻译或删除占位符，例如 "
+            "__COMPANY_001__ / __PERSON_003__。可以改写上下文内容，但必须原样保留这些占位符。"
+            "如果要多轮重新识别，建议先批量添加你确定的重要项目或名称，再删除误识别项。"
         )
-        ttk.Label(scan_group, text=self.ai_notice_text, style="Hint.TLabel", wraplength=760, justify="left").grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(10, 0)
-        )
+        ttk.Label(
+            scan_group,
+            text=self.ai_notice_text,
+            style="Hint.TLabel",
+            wraplength=500,
+            justify="left",
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
         strategy_group = ttk.LabelFrame(left_card, text="2. 识别策略", style="Section.TLabelframe", padding=14)
         strategy_group.grid(row=1, column=0, sticky="ew", pady=(14, 0))
         strategy_group.columnconfigure(1, weight=1)
-        ttk.Checkbutton(strategy_group, text="启用本地模型辅助识别（默认）", variable=self.sanitize_use_llm_var).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        ttk.Checkbutton(
+            strategy_group,
+            text="启用本地模型辅助识别（默认）",
+            variable=self.sanitize_use_llm_var,
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
         ttk.Label(strategy_group, text="Ollama 地址", style="Field.TLabel").grid(row=1, column=0, sticky="w", pady=6)
         ttk.Entry(strategy_group, textvariable=self.ollama_url_var).grid(row=1, column=1, sticky="ew", pady=6)
         ttk.Label(strategy_group, text="模型", style="Field.TLabel").grid(row=2, column=0, sticky="w", pady=6)
+
         model_row = ttk.Frame(strategy_group, style="Card.TFrame")
         model_row.grid(row=2, column=1, sticky="ew", pady=6)
         model_row.columnconfigure(0, weight=1)
         self.sanitize_model_combo = ttk.Combobox(model_row, textvariable=self.model_var)
         self.sanitize_model_combo.grid(row=0, column=0, sticky="ew")
         ttk.Button(model_row, text="检测模型", command=self.detect_models).grid(row=0, column=1, padx=(8, 0))
-        ttk.Label(strategy_group, text="建议流程：先识别候选 -> 审核映射 -> 再生成脱敏文档。", style="Hint.TLabel").grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(
+            strategy_group,
+            text="建议流程：先识别候选 -> 审核映射 -> 再生成脱敏文档。",
+            style="Hint.TLabel",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
-        review_group = ttk.LabelFrame(left_card, text="3. 映射审核", style="Section.TLabelframe", padding=14)
-        review_group.grid(row=2, column=0, sticky="nsew", pady=(14, 0))
+        log_group = ttk.LabelFrame(left_card, text="运行日志", style="Section.TLabelframe", padding=14)
+        log_group.grid(row=2, column=0, sticky="nsew", pady=(14, 0))
+        log_group.columnconfigure(0, weight=1)
+        log_group.rowconfigure(0, weight=1)
+        self.mask_log_text = self._create_log_widget(log_group)
+        self.mask_log_text.grid(row=0, column=0, sticky="nsew")
+
+        review_group = ttk.LabelFrame(right_card, text="3. 映射审核", style="Section.TLabelframe", padding=14)
+        review_group.grid(row=0, column=0, sticky="nsew")
         review_group.columnconfigure(0, weight=1)
         review_group.rowconfigure(2, weight=1)
 
@@ -96,7 +119,7 @@ class SanitizeTabMixin:
             tree_shell,
             columns=("enabled", "category", "original", "placeholder", "source"),
             show="headings",
-            height=9,
+            height=18,
             style="Mapping.Treeview",
         )
         for key, label, width in [
@@ -140,11 +163,11 @@ class SanitizeTabMixin:
         self.batch_add_text = tk.Text(batch_row, height=4, wrap=tk.WORD, font=("Microsoft YaHei UI", 10))
         self.batch_add_text.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         ttk.Button(batch_row, text="批量添加", command=self.add_manual_mapping_batch).grid(row=1, column=1, sticky="ne", padx=(10, 0))
-        ttk.Label(review_group, text="支持双击表格直接编辑；搜索可确认某个名词是否已被识别。批量添加每行可写：名称，或 COMPANY|名称，或 名称=>__COMPANY_001__。", style="Hint.TLabel").grid(row=6, column=0, sticky="w", pady=(8, 0))
-
-        ttk.Label(right_card, text="运行日志", style="Field.TLabel").grid(row=0, column=0, sticky="w")
-        self.mask_log_text = self._create_log_widget(right_card)
-        self.mask_log_text.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        ttk.Label(
+            review_group,
+            text="支持双击表格直接编辑；搜索可确认某个名词是否已被识别。批量添加每行可写：名称，或 COMPANY|名称，或 名称=>__COMPANY_001__。",
+            style="Hint.TLabel",
+        ).grid(row=6, column=0, sticky="w", pady=(8, 0))
 
     def _browse_sanitize_input(self) -> None:
         path = filedialog.askopenfilename(filetypes=[("Supported", "*.docx *.pptx"), ("Word", "*.docx"), ("PowerPoint", "*.pptx")])
@@ -194,7 +217,7 @@ class SanitizeTabMixin:
 
     def _validate_scan_inputs(self) -> bool:
         if not self.sanitize_input_var.get().strip():
-            messagebox.showwarning("缺少参数", "请先选择原始 DOCX。")
+            messagebox.showwarning("缺少参数", "请先选择原始文件。")
             return False
         if not self.sanitize_output_var.get().strip():
             messagebox.showwarning("缺少参数", "请先填写脱敏输出路径。")
@@ -294,7 +317,14 @@ class SanitizeTabMixin:
         self.mapping_tree.delete(*self.mapping_tree.get_children())
         search = self.mapping_search_var.get().strip().lower()
         for idx, entry in enumerate(self._mapping_entries()):
-            hay = " ".join([str(entry.get("category", "")), str(entry.get("original", "")), str(entry.get("placeholder", "")), str(entry.get("source", ""))]).lower()
+            hay = " ".join(
+                [
+                    str(entry.get("category", "")),
+                    str(entry.get("original", "")),
+                    str(entry.get("placeholder", "")),
+                    str(entry.get("source", "")),
+                ]
+            ).lower()
             if search and search not in hay:
                 continue
             self.mapping_tree.insert(
@@ -431,7 +461,15 @@ class SanitizeTabMixin:
             return
         category = self._infer_sensitive_category_from_text(sensitive, replacement)
         placeholder, _ = self._normalize_placeholder_input(replacement or "", entries, category)
-        entries.append({"placeholder": placeholder, "original": sensitive, "category": self._infer_manual_category(placeholder, sensitive), "enabled": True, "source": "manual"})
+        entries.append(
+            {
+                "placeholder": placeholder,
+                "original": sensitive,
+                "category": self._infer_manual_category(placeholder, sensitive),
+                "enabled": True,
+                "source": "manual",
+            }
+        )
         self._rebuild_mapping_metadata()
         self._refresh_mapping_tree()
         self.mapping_summary_var.set(self._mapping_summary_text())
@@ -459,14 +497,22 @@ class SanitizeTabMixin:
                 continue
             category = category_hint or self._infer_sensitive_category_from_text(sensitive, placeholder_hint)
             placeholder, _ = self._normalize_placeholder_input(placeholder_hint, entries, category)
-            entries.append({"placeholder": placeholder, "original": sensitive, "category": self._infer_manual_category(placeholder, sensitive), "enabled": True, "source": "manual"})
+            entries.append(
+                {
+                    "placeholder": placeholder,
+                    "original": sensitive,
+                    "category": self._infer_manual_category(placeholder, sensitive),
+                    "enabled": True,
+                    "source": "manual",
+                }
+            )
             added += 1
         self._rebuild_mapping_metadata()
         self._refresh_mapping_tree()
         self.mapping_summary_var.set(self._mapping_summary_text())
         self._update_sanitize_action_states()
         self.batch_add_text.delete("1.0", tk.END)
-        self.log_queue.put(("sanitize", f"[INFO] 批量添加敏感词: 新增 {added} 条"))
+        self.log_queue.put(("sanitize", f"[INFO] 批量添加敏感词：新增 {added} 条"))
 
     def _parse_batch_line(self, line: str) -> tuple[str, str, str]:
         text = line.strip()
@@ -484,7 +530,7 @@ class SanitizeTabMixin:
                 if self._looks_like_category_token(left):
                     return right, left.upper(), ""
                 return left, "", right
-        for sep in ("|", "\t", "，", ","):
+        for sep in ("|", "\t", "：", ","):
             if sep in text:
                 left, right = [part.strip() for part in text.split(sep, 1)]
                 if not left or not right:
@@ -507,14 +553,24 @@ class SanitizeTabMixin:
 
     def _next_manual_placeholder(self, entries: list[dict[str, object]], category: str = "MANUAL", exclude_index: int | None = None) -> str:
         index = 1
-        used = {str(item.get("placeholder", "")).strip().upper() for idx, item in enumerate(entries) if exclude_index is None or idx != exclude_index}
+        used = {
+            str(item.get("placeholder", "")).strip().upper()
+            for idx, item in enumerate(entries)
+            if exclude_index is None or idx != exclude_index
+        }
         while True:
             candidate = f"__{category.upper()}_{index:03d}__"
             if candidate.upper() not in used:
                 return candidate
             index += 1
 
-    def _normalize_placeholder_input(self, raw_value: str, entries: list[dict[str, object]], preferred_category: str, exclude_index: int | None = None) -> tuple[str, str]:
+    def _normalize_placeholder_input(
+        self,
+        raw_value: str,
+        entries: list[dict[str, object]],
+        preferred_category: str,
+        exclude_index: int | None = None,
+    ) -> tuple[str, str]:
         raw = raw_value.strip()
         category = preferred_category.upper() or "MANUAL"
         if raw:
@@ -525,7 +581,11 @@ class SanitizeTabMixin:
                 category = match.group(1).upper()
                 if match.group(2):
                     desired = f"__{category}_{int(match.group(2)):03d}__"
-                    used = {str(item.get("placeholder", "")).strip().upper() for idx, item in enumerate(entries) if exclude_index is None or idx != exclude_index}
+                    used = {
+                        str(item.get("placeholder", "")).strip().upper()
+                        for idx, item in enumerate(entries)
+                        if exclude_index is None or idx != exclude_index
+                    }
                     if desired.upper() not in used:
                         return desired, category
                 return self._next_manual_placeholder(entries, category, exclude_index=exclude_index), category
@@ -558,7 +618,7 @@ class SanitizeTabMixin:
             return "COMPANY"
         if re.fullmatch(r"[A-Z][A-Za-z&.\-]+(?:\s+[A-Z][A-Za-z&.\-]+){0,5}", raw):
             return "COMPANY"
-        if re.fullmatch(r"(?:欧阳|司马|上官|诸葛|皇甫|尉迟|公孙|长孙|慕容|司徒|夏侯|东方|独孤|南宫|闻人|令狐|轩辕|[赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻柏窦章云苏潘葛范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹])[一-龥某]{1,2}", raw):
+        if re.fullmatch(r"(?:欧阳|司马|上官|诸葛|皇甫|尉迟|公孙|长孙|慕容|司徒|夏侯|东方|独孤|南宫|闻人|令狐|轩辕|赵|钱|孙|李|周|吴|郑|王|冯|陈|褚|卫|蒋|沈|韩|杨|朱|秦|尤|许|何|吕|施|张|孔|曹|严|华|金|魏|陶|姜|戚|谢|邹|喻|柏|窦|章|云|苏|潘|葛|范|彭|郎|鲁|韦|昌|马|苗|凤|花|方|俞|任|袁|柳|鲍|史|唐|费|廉|岑|薛|雷|贺|倪|汤|殷|罗|毕|郝|邬|安|常|乐|于|时|傅|皮|卞|齐|康|伍|余|元|卜|顾|孟|平|黄|和|穆|萧|尹)[一-龥某]{1,2}", raw):
             return "PERSON"
         if re.fullmatch(r"[A-Z]{2,}(?:[-_][A-Z0-9]+)+", raw):
             return "CODE"
@@ -591,7 +651,11 @@ class SanitizeTabMixin:
 
     def _update_sanitize_action_states(self) -> None:
         entries = self._mapping_entries()
-        valid_entries = [entry for entry in entries if str(entry.get("original", "")).strip() and str(entry.get("placeholder", "")).strip()]
+        valid_entries = [
+            entry
+            for entry in entries
+            if str(entry.get("original", "")).strip() and str(entry.get("placeholder", "")).strip()
+        ]
         has_mapping = len(valid_entries) > 0
         self.initial_scan_button.configure(state=("disabled" if has_mapping else "normal"))
         self.rescan_button.configure(state=("normal" if has_mapping else "disabled"))
