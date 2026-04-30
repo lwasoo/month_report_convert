@@ -12,6 +12,23 @@ Write-Host "[INFO] Installing runtime/build dependencies..."
 & $PythonExe -m pip install --upgrade pip
 & $PythonExe -m pip install -r requirements.txt -r requirements-build.txt
 
+$IconPng = Join-Path $Root "assets\icon.png"
+$IconIco = Join-Path $Root "assets\icon.ico"
+if (Test-Path $IconPng) {
+  Write-Host "[INFO] Generating Windows icon from assets\icon.png..."
+  @'
+from pathlib import Path
+from PIL import Image
+root = Path.cwd()
+icon_png = root / "assets" / "icon.png"
+icon_ico = root / "assets" / "icon.ico"
+img = Image.open(icon_png).convert("RGBA")
+sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+img.save(icon_ico, sizes=sizes)
+print(icon_ico)
+'@ | & $PythonExe -
+}
+
 Write-Host "[INFO] Cleaning old build artifacts..."
 if (Test-Path ".\build") { Remove-Item ".\build" -Recurse -Force }
 if (Test-Path ".\dist") { Remove-Item ".\dist" -Recurse -Force }
@@ -23,9 +40,11 @@ Write-Host "[INFO] Building Windows EXE with PyInstaller..."
   --onefile `
   --windowed `
   --name $AppName `
+  --icon $IconIco `
   --hidden-import rapidocr_onnxruntime `
   --collect-all rapidocr_onnxruntime `
   --collect-all onnxruntime `
+  --add-data "assets;assets" `
   --add-data "docx_to_ppt_converter.py;." `
   --add-data "sanitize_docx.py;." `
   --add-data "doc_sanitizer;doc_sanitizer" `

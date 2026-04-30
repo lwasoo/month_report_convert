@@ -85,13 +85,37 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         self.batch_placeholder_text = "示例：\nCOMPANY|Baker Botts贝克博茨律所\nPERSON|张华\nNexus=>__PROJECT_008__\n立讯技术"
         self.manual_sensitive_placeholder = "输入敏感词，例如：Baker Botts贝克博茨律所"
         self.manual_placeholder_hint = "可留空；也可写 COMPANY 或 __COMPANY_010__"
+        self.app_icon_image: tk.PhotoImage | None = None
 
         self._configure_style()
+        self._apply_window_icon()
         self._build_ui()
         self._setup_placeholder_hints()
         self._update_sanitize_action_states()
         self._pump_logs()
         self.root.after(300, self.detect_models_async)
+
+    def _resource_path(self, relative_path: str) -> Path:
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return Path(meipass) / relative_path
+        return Path(__file__).resolve().parent.parent / relative_path
+
+    def _apply_window_icon(self) -> None:
+        icon_png = self._resource_path("assets/icon.png")
+        icon_ico = self._resource_path("assets/icon.ico")
+        try:
+            if icon_png.exists():
+                self.app_icon_image = tk.PhotoImage(file=str(icon_png))
+                self.root.iconphoto(True, self.app_icon_image)
+        except Exception:
+            self.app_icon_image = None
+        if sys.platform == "win32":
+            try:
+                if icon_ico.exists():
+                    self.root.iconbitmap(str(icon_ico))
+            except Exception:
+                pass
 
     def _configure_style(self) -> None:
         style = ttk.Style()
@@ -103,21 +127,29 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
             except tk.TclError:
                 pass
 
-        self.root.configure(bg="#eef3f8")
+        self.root.configure(bg="#f6f8fb")
         style.configure(".", font=("Microsoft YaHei UI", 10))
-        style.configure("App.TFrame", background="#eef3f8")
+        style.configure("App.TFrame", background="#f6f8fb")
         style.configure("Card.TFrame", background="#ffffff")
-        style.configure("Header.TFrame", background="#103b66")
-        style.configure("HeaderTitle.TLabel", background="#103b66", foreground="#ffffff", font=("Microsoft YaHei UI", 18, "bold"))
-        style.configure("HeaderSub.TLabel", background="#103b66", foreground="#d7e6f5", font=("Microsoft YaHei UI", 10))
-        style.configure("Section.TLabelframe", background="#ffffff", borderwidth=0, relief="flat")
-        style.configure("Section.TLabelframe.Label", background="#ffffff", foreground="#16324f", font=("Microsoft YaHei UI", 11, "bold"))
-        style.configure("Field.TLabel", background="#ffffff", foreground="#304860")
-        style.configure("Hint.TLabel", background="#ffffff", foreground="#6f8093", font=("Microsoft YaHei UI", 9))
-        style.configure("Status.TLabel", background="#ffffff", foreground="#48627c", font=("Microsoft YaHei UI", 9))
-        style.configure("Primary.TButton", font=("Microsoft YaHei UI", 10, "bold"))
-        style.configure("Mapping.Treeview", rowheight=32, font=("Microsoft YaHei UI", 11))
-        style.configure("Mapping.Treeview.Heading", font=("Microsoft YaHei UI", 10, "bold"))
+        style.configure("Header.TFrame", background="#f6f8fb")
+        style.configure("HeaderAccent.TFrame", background="#2f6fed")
+        style.configure("HeaderTitle.TLabel", background="#f6f8fb", foreground="#17324d", font=("Microsoft YaHei UI", 16, "bold"))
+        style.configure("HeaderSub.TLabel", background="#f6f8fb", foreground="#70849a", font=("Microsoft YaHei UI", 9))
+        style.configure("Section.TLabelframe", background="#ffffff", borderwidth=1, relief="solid")
+        style.configure("Section.TLabelframe.Label", background="#ffffff", foreground="#17324d", font=("Microsoft YaHei UI", 11, "bold"))
+        style.configure("Field.TLabel", background="#ffffff", foreground="#2f485f")
+        style.configure("Hint.TLabel", background="#ffffff", foreground="#7b8da1", font=("Microsoft YaHei UI", 9))
+        style.configure("Status.TLabel", background="#ffffff", foreground="#5f7389", font=("Microsoft YaHei UI", 9))
+        style.configure("TButton", padding=(10, 6))
+        style.configure("TEntry", padding=(6, 4))
+        style.configure("TCombobox", padding=(6, 4))
+        style.configure("TNotebook", background="#f6f8fb", borderwidth=0, tabmargins=(0, 0, 0, 0))
+        style.configure("TNotebook.Tab", padding=(14, 8), font=("Microsoft YaHei UI", 10), background="#edf2f8", foreground="#5d7188", borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", "#ffffff"), ("active", "#f2f6fb")], foreground=[("selected", "#2f6fed"), ("active", "#2f6fed")])
+        style.configure("Primary.TButton", font=("Microsoft YaHei UI", 10, "bold"), padding=(11, 6))
+        style.configure("Secondary.TButton", padding=(10, 6))
+        style.configure("Mapping.Treeview", rowheight=32, font=("Microsoft YaHei UI", 11), borderwidth=0)
+        style.configure("Mapping.Treeview.Heading", font=("Microsoft YaHei UI", 10, "bold"), background="#f5f8fc", foreground="#2f485f")
 
     def _build_ui(self) -> None:
         shell = ttk.Frame(self.root, style="App.TFrame", padding=14)
@@ -125,11 +157,16 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         shell.columnconfigure(0, weight=1)
         shell.rowconfigure(1, weight=1)
 
-        header = ttk.Frame(shell, style="Header.TFrame", padding=(18, 16))
+        header = ttk.Frame(shell, style="Header.TFrame", padding=(0, 0, 0, 10))
         header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="月报工具箱", style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(header, text="月报转 PPT / 文档脱敏 / 文档还原", style="HeaderSub.TLabel").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        accent = ttk.Frame(header, style="HeaderAccent.TFrame", height=3)
+        accent.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        title_wrap = ttk.Frame(header, style="Header.TFrame", padding=(4, 0, 0, 0))
+        title_wrap.grid(row=1, column=0, sticky="ew")
+        title_wrap.columnconfigure(0, weight=1)
+        ttk.Label(title_wrap, text="月报工具箱", style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(title_wrap, text="月报转 PPT / 文档脱敏 / 文档还原", style="HeaderSub.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
 
         notebook = ttk.Notebook(shell)
         notebook.grid(row=1, column=0, sticky="nsew")

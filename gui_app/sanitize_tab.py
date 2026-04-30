@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import tkinter as tk
 from pathlib import Path
@@ -20,8 +19,8 @@ class SanitizeTabMixin:
 
         left_card = ttk.Frame(main, style="Card.TFrame", padding=18)
         right_card = ttk.Frame(main, style="Card.TFrame", padding=18)
-        main.add(left_card, weight=5)
-        main.add(right_card, weight=5)
+        main.add(left_card, weight=4)
+        main.add(right_card, weight=6)
 
         left_card.columnconfigure(0, weight=1)
         left_card.rowconfigure(2, weight=1)
@@ -39,23 +38,25 @@ class SanitizeTabMixin:
         actions.grid(row=3, column=1, sticky="w", pady=(8, 0))
         self.initial_scan_button = ttk.Button(actions, text="识别候选映射", style="Primary.TButton", command=self.start_scan_mapping)
         self.initial_scan_button.pack(side="left")
-        self.load_mapping_button = ttk.Button(actions, text="载入映射 JSON", command=self.load_mapping_json)
+        self.load_mapping_button = ttk.Button(actions, text="载入映射 JSON", style="Secondary.TButton", command=self.load_mapping_json)
         self.load_mapping_button.pack(side="left", padx=(8, 0))
-        self.rescan_button = ttk.Button(actions, text="按当前映射继续识别", command=self.rescan_mapping)
+        self.rescan_button = ttk.Button(actions, text="按当前映射继续识别", style="Secondary.TButton", command=self.rescan_mapping)
         self.rescan_button.pack(side="left", padx=(8, 0))
-        self.apply_mapping_button = ttk.Button(actions, text="生成脱敏文档", command=self.apply_current_mapping)
+        self.apply_mapping_button = ttk.Button(actions, text="生成脱敏文档", style="Secondary.TButton", command=self.apply_current_mapping)
         self.apply_mapping_button.pack(side="left", padx=(8, 0))
 
         self.ai_notice_text = (
-            "发给外部 AI 前请注意：不要修改、拆分、翻译或删除占位符，例如 "
-            "__COMPANY_001__ / __PERSON_003__。可以改写上下文内容，但必须原样保留这些占位符。"
+            "可以删除不需要的句子或段落，也可以改写内容。"
+            "如果保留某个敏感信息，请保留对应占位符原样不变，例如 __COMPANY_001__ / __PERSON_003__。"
+            "不要修改、拆分、翻译、加空格或改编号。"
+            "如果整句被删除，其中的占位符也可一并删除；该项后续不会还原。"
             "如果要多轮重新识别，建议先批量添加你确定的重要项目或名称，再删除误识别项。"
         )
         ttk.Label(
             scan_group,
             text=self.ai_notice_text,
             style="Hint.TLabel",
-            wraplength=500,
+            wraplength=480,
             justify="left",
         ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
@@ -76,7 +77,7 @@ class SanitizeTabMixin:
         model_row.columnconfigure(0, weight=1)
         self.sanitize_model_combo = ttk.Combobox(model_row, textvariable=self.model_var)
         self.sanitize_model_combo.grid(row=0, column=0, sticky="ew")
-        ttk.Button(model_row, text="检测模型", command=self.detect_models).grid(row=0, column=1, padx=(8, 0))
+        ttk.Button(model_row, text="检测模型", style="Secondary.TButton", command=self.detect_models).grid(row=0, column=1, padx=(8, 0))
         ttk.Label(
             strategy_group,
             text="建议流程：先识别候选 -> 审核映射 -> 再生成脱敏文档。",
@@ -109,7 +110,7 @@ class SanitizeTabMixin:
         search_entry = ttk.Entry(search_row, textvariable=self.mapping_search_var)
         search_entry.grid(row=0, column=1, sticky="ew", padx=(8, 8))
         search_entry.bind("<KeyRelease>", lambda _e: self._refresh_mapping_tree())
-        ttk.Button(search_row, text="清空", command=self.clear_mapping_search).grid(row=0, column=2)
+        ttk.Button(search_row, text="清空", style="Secondary.TButton", command=self.clear_mapping_search).grid(row=0, column=2)
 
         tree_shell = ttk.Frame(review_group, style="Card.TFrame")
         tree_shell.grid(row=2, column=0, sticky="nsew", pady=(10, 0))
@@ -141,8 +142,8 @@ class SanitizeTabMixin:
 
         tool_row = ttk.Frame(review_group, style="Card.TFrame")
         tool_row.grid(row=3, column=0, sticky="w", pady=(10, 0))
-        ttk.Button(tool_row, text="启用/禁用选中", command=self.toggle_selected_mapping_entries).pack(side="left")
-        ttk.Button(tool_row, text="删除选中", command=self.remove_selected_mapping_entries).pack(side="left", padx=(8, 0))
+        ttk.Button(tool_row, text="启用/禁用选中", style="Secondary.TButton", command=self.toggle_selected_mapping_entries).pack(side="left")
+        ttk.Button(tool_row, text="删除选中", style="Secondary.TButton", command=self.remove_selected_mapping_entries).pack(side="left", padx=(8, 0))
 
         manual_row = ttk.Frame(review_group, style="Card.TFrame")
         manual_row.grid(row=4, column=0, sticky="ew", pady=(10, 0))
@@ -154,7 +155,7 @@ class SanitizeTabMixin:
         ttk.Label(manual_row, text="替换为", style="Field.TLabel").grid(row=0, column=2, sticky="w")
         self.manual_placeholder_entry = tk.Entry(manual_row, textvariable=self.manual_placeholder_var, font=("Microsoft YaHei UI", 10))
         self.manual_placeholder_entry.grid(row=0, column=3, sticky="ew", padx=(8, 16))
-        ttk.Button(manual_row, text="添加", command=self.add_manual_mapping_entry).grid(row=0, column=4)
+        ttk.Button(manual_row, text="添加", style="Secondary.TButton", command=self.add_manual_mapping_entry).grid(row=0, column=4)
 
         batch_row = ttk.Frame(review_group, style="Card.TFrame")
         batch_row.grid(row=5, column=0, sticky="ew", pady=(10, 0))
@@ -162,7 +163,7 @@ class SanitizeTabMixin:
         ttk.Label(batch_row, text="批量添加（支持 名称 / 类别+名称 / 名称+占位符）", style="Field.TLabel").grid(row=0, column=0, sticky="w")
         self.batch_add_text = tk.Text(batch_row, height=4, wrap=tk.WORD, font=("Microsoft YaHei UI", 10))
         self.batch_add_text.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-        ttk.Button(batch_row, text="批量添加", command=self.add_manual_mapping_batch).grid(row=1, column=1, sticky="ne", padx=(10, 0))
+        ttk.Button(batch_row, text="批量添加", style="Secondary.TButton", command=self.add_manual_mapping_batch).grid(row=1, column=1, sticky="ne", padx=(10, 0))
         ttk.Label(
             review_group,
             text="支持双击表格直接编辑；搜索可确认某个名词是否已被识别。批量添加每行可写：名称，或 COMPANY|名称，或 名称=>__COMPANY_001__。",
@@ -170,7 +171,9 @@ class SanitizeTabMixin:
         ).grid(row=6, column=0, sticky="w", pady=(8, 0))
 
     def _browse_sanitize_input(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("Supported", "*.docx *.pptx"), ("Word", "*.docx"), ("PowerPoint", "*.pptx")])
+        path = filedialog.askopenfilename(
+            filetypes=[("支持的文件", "*.docx *.pptx"), ("Word 文档", "*.docx"), ("PPT 文档", "*.pptx")]
+        )
         if path:
             self.sanitize_input_var.set(path)
             stem = Path(path).stem
@@ -181,7 +184,10 @@ class SanitizeTabMixin:
                 self.sanitize_mapping_var.set(str(Path(path).with_name(f"{stem}_映射.json")))
 
     def _browse_sanitize_output(self) -> None:
-        path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Supported", "*.docx *.pptx"), ("Word", "*.docx"), ("PowerPoint", "*.pptx")])
+        path = filedialog.asksaveasfilename(
+            defaultextension=".docx",
+            filetypes=[("支持的文件", "*.docx *.pptx"), ("Word 文档", "*.docx"), ("PPT 文档", "*.pptx")],
+        )
         if path:
             self.sanitize_output_var.set(path)
 
