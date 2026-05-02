@@ -4,3 +4,4 @@ build/
 dist/
 *.spec
 .idea/
+gui_app/version.txt

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI entrypoint for DOCX/PPTX sanitization and restore."""
+"""CLI entrypoint for Word/PPT sanitization and restore."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from doc_sanitizer import restore_file, sanitize_file
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Sanitize or restore sensitive content in DOCX/PPTX files.")
+    parser = argparse.ArgumentParser(description="Sanitize or restore sensitive content in Word/PPT files.")
     parser.add_argument("mode", choices=["sanitize", "restore"], help="Operation mode")
-    parser.add_argument("--input", required=True, type=Path, help="Input DOCX/PPTX path")
-    parser.add_argument("--output", required=True, type=Path, help="Output DOCX/PPTX path")
+    parser.add_argument("--input", required=True, type=Path, help="Input Word/PPT path (.doc/.docx/.ppt/.pptx)")
+    parser.add_argument("--output", required=True, type=Path, help="Output Word/PPT path (.doc/.docx/.ppt/.pptx)")
     parser.add_argument("--mapping", required=True, type=Path, help="Mapping JSON path")
     parser.add_argument("--terms-file", type=Path, help="Optional custom terms file, one term per line")
     parser.add_argument("--use-llm-assist", dest="use_llm_assist", action="store_true", default=True, help="Use local Ollama model to assist sensitive candidate detection (default: on)")

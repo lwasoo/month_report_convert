@@ -2,10 +2,23 @@
 set -euo pipefail
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-APP_NAME="${APP_NAME:-MonthReportConverter}"
+APP_NAME="${APP_NAME:-FileToolbox}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 cd "$ROOT_DIR"
+
+VERSION="${MONTH_REPORT_CONVERTER_VERSION:-}"
+if [[ -z "$VERSION" ]]; then
+  VERSION="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+fi
+if [[ -z "$VERSION" ]]; then
+  VERSION="0.0.0-dev"
+fi
+VERSION="${VERSION#v}"
+VERSION="${VERSION#V}"
+PACKAGE_NAME="v${VERSION}-${APP_NAME}"
+echo "[INFO] Stamping app version: $VERSION"
+printf '%s\n' "$VERSION" > "$ROOT_DIR/gui_app/version.txt"
 
 echo "[INFO] Installing runtime/build dependencies..."
 "$PYTHON_BIN" -m pip install --upgrade pip
@@ -40,17 +53,18 @@ echo "[INFO] Building macOS app bundle with PyInstaller..."
   --noconfirm \
   --clean \
   --windowed \
-  --name "$APP_NAME" \
+  --name "$PACKAGE_NAME" \
   --icon "$ICON_ICNS" \
   --hidden-import rapidocr_onnxruntime \
   --collect-all rapidocr_onnxruntime \
   --collect-all onnxruntime \
   --add-data "assets:assets" \
   --add-data "docx_to_ppt_converter.py:." \
+  --add-data "office_conversion.py:." \
   --add-data "sanitize_docx.py:." \
   --add-data "doc_sanitizer:doc_sanitizer" \
   --add-data "gui_app:gui_app" \
   --add-data "report_converter:report_converter" \
   gui_converter.py
 
-echo "[INFO] Build completed: ./dist/${APP_NAME}.app"
+echo "[INFO] Build completed: ./dist/${PACKAGE_NAME}.app"

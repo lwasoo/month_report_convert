@@ -74,7 +74,7 @@ def collect_candidates(texts: list[str], custom_terms: list[str]) -> list[tuple[
 def scan_file_payload(
     input_path: Path,
     custom_terms: list[str] | None = None,
-    use_llm_assist: bool = False,
+    use_llm_assist: bool = True,
     model: str = "qwen2.5:7b-instruct-q4_K_M",
     ollama_url: str = "http://127.0.0.1:11434",
     timeout_sec: int = 120,

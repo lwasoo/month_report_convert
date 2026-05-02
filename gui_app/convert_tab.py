@@ -84,19 +84,19 @@ class ConvertTabMixin:
         self.log_text.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
 
     def _browse_docx(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("Word 文档", "*.docx")])
+        path = filedialog.askopenfilename(filetypes=[("Word 文档", "*.doc *.docx"), ("Word 旧格式", "*.doc"), ("Word 新格式", "*.docx")])
         if path:
             self.docx_var.set(path)
             if not self.output_var.get():
                 self.output_var.set(str(Path(path).with_name(f"{Path(path).stem}_自动填充.pptx")))
 
     def _browse_template(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("PPT 模板", "*.pptx")])
+        path = filedialog.askopenfilename(filetypes=[("PPT 模板", "*.ppt *.pptx"), ("PPT 旧格式", "*.ppt"), ("PPT 新格式", "*.pptx")])
         if path:
             self.template_var.set(path)
 
     def _browse_output(self) -> None:
-        path = filedialog.asksaveasfilename(defaultextension=".pptx", filetypes=[("PPT 文件", "*.pptx")])
+        path = filedialog.asksaveasfilename(defaultextension=".pptx", filetypes=[("PPT 文件", "*.ppt *.pptx"), ("PPT 旧格式", "*.ppt"), ("PPT 新格式", "*.pptx")])
         if path:
             self.output_var.set(path)
 

@@ -26,13 +26,15 @@ jobs:
 
       - name: Build EXE
         shell: pwsh
-        run: .\scripts\build_windows.ps1 -PythonExe python -AppName MonthReportConverter
+        env:
+          MONTH_REPORT_CONVERTER_VERSION: ${{ github.ref_name }}
+        run: .\scripts\build_windows.ps1 -PythonExe python -AppName FileToolbox
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MonthReportConverter-windows
-          path: dist/MonthReportConverter.exe
+          name: FileToolbox-windows
+          path: dist/v*-FileToolbox.exe
 
   build-macos:
     runs-on: macos-latest
@@ -46,16 +48,25 @@ jobs:
           python-version: "3.10"
 
       - name: Build app
+        env:
+          MONTH_REPORT_CONVERTER_VERSION: ${{ github.ref_name }}
         run: bash ./scripts/build_macos.sh
 
       - name: Zip macOS app
-        run: ditto -c -k --sequesterRsrc --keepParent dist/MonthReportConverter.app dist/MonthReportConverter-macos.zip
+        run: |
+          app_path="$(find dist -maxdepth 1 -name 'v*-FileToolbox.app' -type d | head -n 1)"
+          if [ -z "$app_path" ]; then
+            echo "No versioned app bundle found in dist" >&2
+            exit 1
+          fi
+          versioned_name="$(basename "$app_path" .app)"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "dist/${versioned_name}-macos.zip"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MonthReportConverter-macos
-          path: dist/MonthReportConverter-macos.zip
+          name: FileToolbox-macos
+          path: dist/v*-FileToolbox-macos.zip
 
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -67,19 +78,19 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: MonthReportConverter-windows
+          name: FileToolbox-windows
           path: dist
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: MonthReportConverter-macos
+          name: FileToolbox-macos
           path: dist
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/MonthReportConverter.exe
-            dist/MonthReportConverter-macos.zip
+            dist/v*-FileToolbox.exe
+            dist/v*-FileToolbox-macos.zip
           generate_release_notes: true

@@ -15,15 +15,18 @@ import threading
 import tkinter as tk
 import urllib.error
 import urllib.request
+import webbrowser
 from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from .about_tab import AboutTabMixin
 from .convert_tab import ConvertTabMixin
-from .defaults import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
+from .defaults import APP_DISPLAY_NAME, APP_VERSION, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from .restore_tab import RestoreTabMixin
 from .sanitize_tab import SanitizeTabMixin
+from office_conversion import LIBREOFFICE_DOWNLOAD_URL, OfficeConversionError
 
 
 def configure_windows_dpi() -> None:
@@ -38,10 +41,10 @@ def configure_windows_dpi() -> None:
             pass
 
 
-class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
+class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin, AboutTabMixin):
     def __init__(self, root: tk.Tk, geometry: str | None = None) -> None:
         self.root = root
-        self.root.title("月报工具箱")
+        self.root.title(f"{APP_DISPLAY_NAME} v{APP_VERSION}")
         self.root.geometry(geometry or "1280x820")
         self.root.minsize(1040, 700)
 
@@ -82,8 +85,8 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         self.mapping_editor: tk.Entry | None = None
         self.mapping_editor_item: str | None = None
         self.mapping_editor_column: str | None = None
-        self.batch_placeholder_text = "示例：\nCOMPANY|Baker Botts贝克博茨律所\nPERSON|张华\nNexus=>__PROJECT_008__\n立讯技术"
-        self.manual_sensitive_placeholder = "输入敏感词，例如：Baker Botts贝克博茨律所"
+        self.batch_placeholder_text = "示例：\nCOMPANY|Google LLC\nPERSON|张三\n示例项目=>__PROJECT_008__\n某某科技有限公司"
+        self.manual_sensitive_placeholder = "输入敏感词，例如：Google LLC"
         self.manual_placeholder_hint = "可留空；也可写 COMPANY 或 __COMPANY_010__"
         self.app_icon_image: tk.PhotoImage | None = None
 
@@ -94,6 +97,7 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         self._update_sanitize_action_states()
         self._pump_logs()
         self.root.after(300, self.detect_models_async)
+        self.root.after(1800, lambda: self.check_updates_async(silent=True))
 
     def _resource_path(self, relative_path: str) -> Path:
         meipass = getattr(sys, "_MEIPASS", None)
@@ -135,6 +139,8 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         style.configure("HeaderAccent.TFrame", background="#2f6fed")
         style.configure("HeaderTitle.TLabel", background="#f6f8fb", foreground="#17324d", font=("Microsoft YaHei UI", 16, "bold"))
         style.configure("HeaderSub.TLabel", background="#f6f8fb", foreground="#70849a", font=("Microsoft YaHei UI", 9))
+        style.configure("AboutThanks.TLabel", background="#ffffff", foreground="#17324d", font=("Microsoft YaHei UI", 22, "bold"))
+        style.configure("RiskNotice.TLabel", background="#ffffff", foreground="#9a3b2f", font=("Microsoft YaHei UI", 10))
         style.configure("Section.TLabelframe", background="#ffffff", borderwidth=1, relief="solid")
         style.configure("Section.TLabelframe.Label", background="#ffffff", foreground="#17324d", font=("Microsoft YaHei UI", 11, "bold"))
         style.configure("Field.TLabel", background="#ffffff", foreground="#2f485f")
@@ -165,8 +171,8 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         title_wrap = ttk.Frame(header, style="Header.TFrame", padding=(4, 0, 0, 0))
         title_wrap.grid(row=1, column=0, sticky="ew")
         title_wrap.columnconfigure(0, weight=1)
-        ttk.Label(title_wrap, text="月报工具箱", style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(title_wrap, text="月报转 PPT / 文档脱敏 / 文档还原", style="HeaderSub.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(title_wrap, text=APP_DISPLAY_NAME, style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(title_wrap, text=f"月报转 PPT / 文档脱敏 / 文档还原 / v{APP_VERSION}", style="HeaderSub.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
 
         notebook = ttk.Notebook(shell)
         notebook.grid(row=1, column=0, sticky="nsew")
@@ -174,13 +180,16 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         convert_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
         sanitize_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
         restore_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
+        about_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
         notebook.add(convert_tab, text="月报转 PPT")
         notebook.add(sanitize_tab, text="脱敏")
         notebook.add(restore_tab, text="还原")
+        notebook.add(about_tab, text="关于")
 
         self._build_convert_tab(convert_tab)
         self._build_sanitize_tab(sanitize_tab)
         self._build_restore_tab(restore_tab)
+        self._build_about_tab(about_tab)
 
     def _create_log_widget(self, parent: ttk.Frame) -> ScrolledText:
         widget = ScrolledText(
@@ -295,10 +304,10 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         self.detect_models_async(silent=False)
 
     def detect_models_async(self, silent: bool = True) -> None:
-        threading.Thread(target=self._detect_models_worker, args=(silent,), daemon=True).start()
-
-    def _detect_models_worker(self, silent: bool) -> None:
         url = self.ollama_url_var.get().strip().rstrip("/") + "/api/tags"
+        threading.Thread(target=self._detect_models_worker, args=(silent, url), daemon=True).start()
+
+    def _detect_models_worker(self, silent: bool, url: str) -> None:
         try:
             req = urllib.request.Request(url=url, method="GET")
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -353,13 +362,28 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
         def runner() -> None:
             try:
                 func()
+            except OfficeConversionError as exc:
+                self.root.after(0, status_var.set, "运行失败")
+                self.root.after(0, self._show_office_conversion_error, exc)
+                self.log_queue.put((target, f"[ERROR] {exc}"))
             except Exception as exc:
-                status_var.set("运行失败")
+                self.root.after(0, status_var.set, "运行失败")
                 self.log_queue.put((target, f"[ERROR] {exc}"))
             finally:
-                self.worker_running = False
+                self.root.after(0, self._mark_worker_idle)
 
         threading.Thread(target=runner, daemon=True).start()
+
+    def _mark_worker_idle(self) -> None:
+        self.worker_running = False
+
+    def _show_office_conversion_error(self, exc: OfficeConversionError) -> None:
+        open_page = messagebox.askyesno(
+            "需要安装 LibreOffice",
+            f"{exc}\n\n是否打开 LibreOffice 下载页面？",
+        )
+        if open_page:
+            webbrowser.open(LIBREOFFICE_DOWNLOAD_URL)
 
     def _resolve_script(self, script_name: str) -> Path | None:
         local = Path(__file__).resolve().parent.parent / script_name
@@ -409,15 +433,15 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin):
                 self.log_queue.put((target, self._decode_output_line(raw).rstrip("\r\n")))
             code = self.process.wait()
             if code == 0:
-                status_var.set("已完成")
+                self.root.after(0, status_var.set, "已完成")
                 self.log_queue.put((target, "[INFO] 任务完成。"))
                 if on_success:
                     self.root.after(0, on_success)
             else:
-                status_var.set("运行失败")
+                self.root.after(0, status_var.set, "运行失败")
                 self.log_queue.put((target, f"[ERROR] 任务失败，退出码={code}"))
         except Exception as exc:
-            status_var.set("启动失败")
+            self.root.after(0, status_var.set, "启动失败")
             self.log_queue.put((target, f"[ERROR] 启动失败: {exc}"))
         finally:
             self.process = None

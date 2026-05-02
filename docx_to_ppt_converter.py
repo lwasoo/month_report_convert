@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI entrypoint for DOCX -> PPT conversion."""
+"""CLI entrypoint for Word -> PPT conversion."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from report_converter.engine import convert, log
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert legal monthly DOCX report into PPT template.")
-    parser.add_argument("--docx", required=True, type=Path, help="Input DOCX path")
-    parser.add_argument("--template", required=True, type=Path, help="Template PPTX path")
-    parser.add_argument("--output", required=True, type=Path, help="Output PPTX path")
+    parser = argparse.ArgumentParser(description="Convert Word report into PPT template.")
+    parser.add_argument("--docx", required=True, type=Path, help="Input Word path (.doc/.docx)")
+    parser.add_argument("--template", required=True, type=Path, help="Template PPT path (.ppt/.pptx)")
+    parser.add_argument("--output", required=True, type=Path, help="Output PPT path (.ppt/.pptx)")
     parser.add_argument("--model", default="qwen2.5:7b-instruct-q4_K_M", help="Ollama model name")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434", help="Ollama base URL")
     parser.add_argument("--timeout", type=int, default=180, help="Ollama timeout seconds")

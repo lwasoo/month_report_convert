@@ -1,11 +1,26 @@
-# 月报工具箱
+# 文件工具箱
 
-把法务月报 `Word(.docx)` 转成模板 `PPT(.pptx)`，并支持 `Word / PPT` 的脱敏与还原。
+把法务月报 `Word(.doc/.docx)` 转成模板 `PPT(.ppt/.pptx)`，并支持 `Word / PPT` 的脱敏与还原。
 
 当前包含 3 个主要功能：
 - `月报转 PPT`：把月报 Word 填进固定 PPT 模板
 - `文档脱敏`：把敏感词替换成占位符，方便交给外部 AI 继续处理
 - `文档还原`：把占位符恢复成原始敏感词
+
+当前原生处理 `.docx` / `.pptx`。`.doc` / `.ppt` 属于旧版二进制 Office 格式，程序会通过 LibreOffice 先临时转换为 `.docx` / `.pptx` 再处理。
+
+如果需要处理 `.doc` / `.ppt`，请先安装 LibreOffice：
+- Windows：`winget install --id TheDocumentFoundation.LibreOffice -e`
+- macOS：`brew install --cask libreoffice`
+- 官网下载：[LibreOffice](https://www.libreoffice.org/download/download-libreoffice/)
+
+如果当前环境没有 LibreOffice，仍然可以稳定处理 `.docx` / `.pptx`。
+
+## 重要提示与免责声明
+
+本工具用于辅助法务月报整理、文档脱敏和文档还原，不能替代人工合规审核。由于源文件格式、图片 OCR、规则识别、本地模型识别、外部 AI 改写和人工编辑都可能产生遗漏、误判或占位符损坏，本工具无法保证 100% 去除数据保密、隐私保护、商业秘密或其他合规风险。
+
+对外发送、上传至第三方系统、交给外部 AI 处理或正式归档前，请务必由业务/法务/合规人员进行人工复核。使用者应自行判断输出文件是否符合所在组织的数据安全、保密和合规要求。
 
 ## 快速选择
 
@@ -106,10 +121,13 @@ python .\gui_converter.py --geometry 1366x768
 python .\gui_converter.py --geometry 1440x900
 ```
 
-GUI 当前包含 3 个页签：
+GUI 当前包含 4 个页签：
 - `月报转 PPT`
 - `脱敏`
 - `还原`
+- `关于`
+
+启动后会自动静默检测 GitHub Release 是否有新版本；也可以在 `关于` 页签里手动点击 `检测更新`。检测到新版本时，程序会打开 Release 下载页面，不会直接覆盖正在运行的客户端。
 
 ## 月报转 PPT
 
@@ -159,7 +177,9 @@ python .\docx_to_ppt_converter.py `
 ## 文档脱敏
 
 当前支持：
+- `doc`
 - `docx`
+- `ppt`
 - `pptx`
 
 输出包括两部分：
@@ -208,16 +228,17 @@ python .\sanitize_docx.py sanitize `
 
 ### AI 辅助识别
 
-默认支持本地 Ollama 辅助识别：
+CLI、GUI 和程序接口默认都会启用本地 Ollama 辅助识别：
 
 ```powershell
 python .\sanitize_docx.py sanitize `
   --input "C:\input.docx" `
   --output "C:\input_脱敏.docx" `
   --mapping "C:\input_映射.json" `
-  --use-llm-assist `
   --model "qwen2.5:7b-instruct-q4_K_M"
 ```
+
+旧版 `.doc` / `.ppt` 也可以作为输入或输出；如果当前环境无法转换，程序会提示安装 LibreOffice。
 
 如果要关闭模型，只用规则：
 
@@ -249,7 +270,9 @@ python .\sanitize_docx.py sanitize `
 ## 文档还原
 
 当前支持：
+- `doc`
 - `docx`
+- `ppt`
 - `pptx`
 
 ### GUI 用法
@@ -309,7 +332,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 ```
 
 产物：
-- `dist\MonthReportConverter.exe`
+- `dist\v版本号-FileToolbox.exe`，例如 `dist\v1.1.2-FileToolbox.exe`
 
 ### macOS
 
@@ -318,7 +341,7 @@ bash ./scripts/build_macos.sh
 ```
 
 产物：
-- `dist/MonthReportConverter.app`
+- `dist/v版本号-FileToolbox.app`，例如 `dist/v1.1.2-FileToolbox.app`
 
 ### 图标
 
@@ -337,6 +360,13 @@ bash ./scripts/build_macos.sh
 可通过以下方式自动构建：
 - 手动运行 `Build Desktop Packages`
 - 推送 `v*` tag
+
+客户端版本号不需要手动维护。源码运行时会从本地 git tag 推断当前版本；打包时会自动生成 `gui_app/version.txt` 并打进客户端。正式发版只需要推送 tag，例如：
+
+```powershell
+git tag v1.1.2
+git push origin v1.1.2
+```
 
 ## 工程结构
 

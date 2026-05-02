@@ -51,7 +51,7 @@ class RestoreTabMixin:
 
     def _browse_restore_input(self) -> None:
         path = filedialog.askopenfilename(
-            filetypes=[("支持的文件", "*.docx *.pptx"), ("Word 文档", "*.docx"), ("PPT 文档", "*.pptx")]
+            filetypes=[("支持的文件", "*.doc *.docx *.ppt *.pptx"), ("Word 文档", "*.doc *.docx"), ("PPT 文档", "*.ppt *.pptx")]
         )
         if path:
             self.restore_input_var.set(path)
@@ -67,7 +67,7 @@ class RestoreTabMixin:
     def _browse_restore_output(self) -> None:
         path = filedialog.asksaveasfilename(
             defaultextension=".docx",
-            filetypes=[("支持的文件", "*.docx *.pptx"), ("Word 文档", "*.docx"), ("PPT 文档", "*.pptx")],
+            filetypes=[("支持的文件", "*.doc *.docx *.ppt *.pptx"), ("Word 文档", "*.doc *.docx"), ("PPT 文档", "*.ppt *.pptx")],
         )
         if path:
             self.restore_output_var.set(path)
@@ -81,12 +81,17 @@ class RestoreTabMixin:
     def start_restore(self) -> None:
         if not self._validate_restore_inputs():
             return
-        self._start_worker("restore", self.restore_status_var, "[INFO] 开始还原文档...", self._restore_worker)
+        params = {
+            "input_path": Path(self.restore_input_var.get().strip()),
+            "mapping_path": Path(self.restore_mapping_var.get().strip()),
+            "output_path": self._unique_output_path(Path(self.restore_output_var.get().strip())),
+        }
+        self._start_worker("restore", self.restore_status_var, "[INFO] 开始还原文档...", lambda: self._restore_worker(params))
 
-    def _restore_worker(self) -> None:
-        input_path = Path(self.restore_input_var.get().strip())
-        mapping_path = Path(self.restore_mapping_var.get().strip())
-        output_path = self._unique_output_path(Path(self.restore_output_var.get().strip()))
+    def _restore_worker(self, params: dict[str, Path]) -> None:
+        input_path = params["input_path"]
+        mapping_path = params["mapping_path"]
+        output_path = params["output_path"]
         restore_file(input_path=input_path, output_path=output_path, mapping_path=mapping_path)
         self.log_queue.put(("restore", f"[INFO] 还原输入: {input_path}"))
         self.log_queue.put(("restore", f"[INFO] 使用映射: {mapping_path}"))

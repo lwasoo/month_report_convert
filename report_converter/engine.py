@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from pptx import Presentation
 
+from office_conversion import convert_from_ooxml, convert_to_ooxml
 from .common import log
 from .drafting import build_drafts_and_metrics
 from .layout import (
@@ -34,6 +36,29 @@ def convert(
     diversity: str = "medium",
     seed: int = 0,
 ) -> None:
+    if docx_path.suffix.lower() == ".doc" or template_pptx.suffix.lower() == ".ppt" or output_pptx.suffix.lower() == ".ppt":
+        with TemporaryDirectory() as td:
+            work_dir = Path(td)
+            converted_docx = convert_to_ooxml(docx_path, work_dir)
+            converted_template = convert_to_ooxml(template_pptx, work_dir)
+            temp_output = work_dir / f"{output_pptx.stem}.pptx"
+            convert(
+                docx_path=converted_docx,
+                template_pptx=converted_template,
+                output_pptx=temp_output,
+                model=model,
+                ollama_url=ollama_url,
+                timeout_sec=timeout_sec,
+                retries=retries,
+                use_llm=use_llm,
+                layout_mode=layout_mode,
+                theme=theme,
+                diversity=diversity,
+                seed=seed,
+            )
+            convert_from_ooxml(temp_output, output_pptx)
+        return
+
     doc_payload = extract_doc_payload(docx_path)
     month_label = detect_month_label(doc_payload["title"], docx_path.name)
     log(f"识别月份: {month_label}")

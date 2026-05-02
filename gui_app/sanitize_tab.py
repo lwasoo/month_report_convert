@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import re
 import tkinter as tk
 from pathlib import Path
@@ -172,7 +173,7 @@ class SanitizeTabMixin:
 
     def _browse_sanitize_input(self) -> None:
         path = filedialog.askopenfilename(
-            filetypes=[("支持的文件", "*.docx *.pptx"), ("Word 文档", "*.docx"), ("PPT 文档", "*.pptx")]
+            filetypes=[("支持的文件", "*.doc *.docx *.ppt *.pptx"), ("Word 文档", "*.doc *.docx"), ("PPT 文档", "*.ppt *.pptx")]
         )
         if path:
             self.sanitize_input_var.set(path)
@@ -186,7 +187,7 @@ class SanitizeTabMixin:
     def _browse_sanitize_output(self) -> None:
         path = filedialog.asksaveasfilename(
             defaultextension=".docx",
-            filetypes=[("支持的文件", "*.docx *.pptx"), ("Word 文档", "*.docx"), ("PPT 文档", "*.pptx")],
+            filetypes=[("支持的文件", "*.doc *.docx *.ppt *.pptx"), ("Word 文档", "*.doc *.docx"), ("PPT 文档", "*.ppt *.pptx")],
         )
         if path:
             self.sanitize_output_var.set(path)
@@ -236,33 +237,49 @@ class SanitizeTabMixin:
     def start_scan_mapping(self) -> None:
         if not self._validate_scan_inputs():
             return
-        self._start_worker("sanitize", self.sanitize_status_var, "[INFO] 开始识别候选映射...", self._scan_mapping_worker)
+        params = self._scan_worker_params()
+        self._start_worker("sanitize", self.sanitize_status_var, "[INFO] 开始识别候选映射...", lambda: self._scan_mapping_worker(params))
 
     def rescan_mapping(self) -> None:
         if not self.current_mapping_data:
             self.start_scan_mapping()
             return
-        self._start_worker("sanitize", self.sanitize_status_var, "[INFO] 按当前映射继续识别候选映射...", self._scan_mapping_worker)
+        params = self._scan_worker_params()
+        self._start_worker("sanitize", self.sanitize_status_var, "[INFO] 按当前映射继续识别候选映射...", lambda: self._scan_mapping_worker(params))
 
-    def _scan_mapping_worker(self) -> None:
-        input_path = Path(self.sanitize_input_var.get().strip())
-        existing_map_path = Path(self.sanitize_mapping_var.get().strip())
+    def _scan_worker_params(self) -> dict[str, object]:
+        return {
+            "input_path": Path(self.sanitize_input_var.get().strip()),
+            "mapping_path": Path(self.sanitize_mapping_var.get().strip()),
+            "use_llm_assist": bool(self.sanitize_use_llm_var.get()),
+            "model": self.model_var.get().strip() or DEFAULT_MODEL,
+            "ollama_url": self.ollama_url_var.get().strip() or DEFAULT_OLLAMA_URL,
+            "timeout_sec": int(self.timeout_var.get().strip() or "120"),
+            "retries": int(self.retries_var.get().strip() or "2"),
+            "existing_payload": copy.deepcopy(self.current_mapping_data),
+        }
+
+    def _scan_mapping_worker(self, params: dict[str, object]) -> None:
+        input_path = params["input_path"]
+        existing_map_path = params["mapping_path"]
+        assert isinstance(input_path, Path)
+        assert isinstance(existing_map_path, Path)
         payload = scan_file(
             input_path=input_path,
             custom_terms=[],
-            use_llm_assist=self.sanitize_use_llm_var.get(),
-            model=self.model_var.get().strip() or DEFAULT_MODEL,
-            ollama_url=self.ollama_url_var.get().strip() or DEFAULT_OLLAMA_URL,
-            timeout_sec=int(self.timeout_var.get().strip() or "120"),
-            retries=int(self.retries_var.get().strip() or "2"),
+            use_llm_assist=bool(params["use_llm_assist"]),
+            model=str(params["model"]),
+            ollama_url=str(params["ollama_url"]),
+            timeout_sec=int(params["timeout_sec"]),
+            retries=int(params["retries"]),
             existing_mapping_path=existing_map_path if existing_map_path.exists() else None,
-            existing_payload=self.current_mapping_data,
+            existing_payload=params["existing_payload"] if isinstance(params["existing_payload"], dict) else None,
         )
+        self.root.after(0, lambda: self._after_scan_complete(payload))
+
+    def _after_scan_complete(self, payload: dict[str, object]) -> None:
         self.current_mapping_data = payload
         self.scan_ready = True
-        self.root.after(0, self._after_scan_complete)
-
-    def _after_scan_complete(self) -> None:
         self._rebuild_mapping_metadata()
         self._refresh_mapping_tree()
         self.sanitize_status_var.set("待确认")
@@ -276,16 +293,30 @@ class SanitizeTabMixin:
         if not self.current_mapping_data:
             messagebox.showwarning("无候选映射", "请先识别候选映射。")
             return
-        self._start_worker("sanitize", self.sanitize_status_var, "[INFO] 开始生成脱敏文档...", self._apply_mapping_worker)
-
-    def _apply_mapping_worker(self) -> None:
         self._rebuild_mapping_metadata()
-        input_path = Path(self.sanitize_input_var.get().strip())
-        output_path = self._unique_output_path(Path(self.sanitize_output_var.get().strip()))
-        mapping_path = self._unique_output_path(Path(self.sanitize_mapping_var.get().strip()))
+        params = self._apply_worker_params()
+        self._start_worker("sanitize", self.sanitize_status_var, "[INFO] 开始生成脱敏文档...", lambda: self._apply_mapping_worker(params))
+
+    def _apply_worker_params(self) -> dict[str, object]:
         assert self.current_mapping_data is not None
-        self.current_mapping_data["sanitized_file"] = str(output_path)
-        apply_mapping_to_file(input_path, output_path, self.current_mapping_data, mapping_path)
+        return {
+            "input_path": Path(self.sanitize_input_var.get().strip()),
+            "output_path": self._unique_output_path(Path(self.sanitize_output_var.get().strip())),
+            "mapping_path": self._unique_output_path(Path(self.sanitize_mapping_var.get().strip())),
+            "payload": copy.deepcopy(self.current_mapping_data),
+        }
+
+    def _apply_mapping_worker(self, params: dict[str, object]) -> None:
+        input_path = params["input_path"]
+        output_path = params["output_path"]
+        mapping_path = params["mapping_path"]
+        payload = params["payload"]
+        assert isinstance(input_path, Path)
+        assert isinstance(output_path, Path)
+        assert isinstance(mapping_path, Path)
+        assert isinstance(payload, dict)
+        payload["sanitized_file"] = str(output_path)
+        apply_mapping_to_file(input_path, output_path, payload, mapping_path)
         self.root.after(0, lambda: self._after_apply_complete(output_path, mapping_path))
 
     def _after_apply_complete(self, output_path: Path, mapping_path: Path) -> None:

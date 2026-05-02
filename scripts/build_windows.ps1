@@ -1,12 +1,28 @@
 param(
     [string]$PythonExe = "python",
-    [string]$AppName = "MonthReportConverter"
+    [string]$AppName = "FileToolbox"
 )
 
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+
+$Version = $env:MONTH_REPORT_CONVERTER_VERSION
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  try {
+    $Version = (& git describe --tags --abbrev=0 2>$null).Trim()
+  } catch {
+    $Version = ""
+  }
+}
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  $Version = "0.0.0-dev"
+}
+$Version = $Version -replace '^[vV]', ''
+$PackageName = "v$Version-$AppName"
+Write-Host "[INFO] Stamping app version: $Version"
+Set-Content -Path (Join-Path $Root "gui_app\version.txt") -Value $Version -Encoding UTF8
 
 Write-Host "[INFO] Installing runtime/build dependencies..."
 & $PythonExe -m pip install --upgrade pip
@@ -39,17 +55,18 @@ Write-Host "[INFO] Building Windows EXE with PyInstaller..."
   --clean `
   --onefile `
   --windowed `
-  --name $AppName `
+  --name $PackageName `
   --icon $IconIco `
   --hidden-import rapidocr_onnxruntime `
   --collect-all rapidocr_onnxruntime `
   --collect-all onnxruntime `
   --add-data "assets;assets" `
   --add-data "docx_to_ppt_converter.py;." `
+  --add-data "office_conversion.py;." `
   --add-data "sanitize_docx.py;." `
   --add-data "doc_sanitizer;doc_sanitizer" `
   --add-data "gui_app;gui_app" `
   --add-data "report_converter;report_converter" `
   gui_converter.py
 
-Write-Host "[INFO] Build completed: .\dist\$AppName.exe"
+Write-Host "[INFO] Build completed: .\dist\$PackageName.exe"
