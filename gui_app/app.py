@@ -91,6 +91,7 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin, PromptTab
         self.manual_sensitive_placeholder = "输入敏感词，例如：Google LLC"
         self.manual_placeholder_hint = "可留空；也可写 COMPANY 或 __COMPANY_010__"
         self.app_icon_image: tk.PhotoImage | None = None
+        self.app_icon_images: list[tk.PhotoImage] = []
 
         self._configure_style()
         self._apply_window_icon()
@@ -110,18 +111,25 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin, PromptTab
     def _apply_window_icon(self) -> None:
         icon_png = self._resource_path("assets/icon.png")
         icon_ico = self._resource_path("assets/icon.ico")
-        try:
-            if icon_png.exists():
-                self.app_icon_image = tk.PhotoImage(file=str(icon_png))
-                self.root.iconphoto(True, self.app_icon_image)
-        except Exception:
-            self.app_icon_image = None
         if sys.platform == "win32":
             try:
                 if icon_ico.exists():
                     self.root.iconbitmap(str(icon_ico))
             except Exception:
                 pass
+        try:
+            if icon_png.exists():
+                self.app_icon_image = tk.PhotoImage(file=str(icon_png))
+                self.app_icon_images = [
+                    self.app_icon_image.subsample(4, 4),
+                    self.app_icon_image.subsample(8, 8),
+                    self.app_icon_image.subsample(16, 16),
+                    self.app_icon_image.subsample(32, 32),
+                ]
+                self.root.iconphoto(True, *self.app_icon_images)
+        except Exception:
+            self.app_icon_image = None
+            self.app_icon_images = []
 
     def _configure_style(self) -> None:
         style = ttk.Style()

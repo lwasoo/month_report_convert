@@ -84,8 +84,10 @@ class UpdateCheckerTests(unittest.TestCase):
 
         self.assertEqual(target, Path(r"C:\Tools\v1.2.1-FileToolbox.exe"))
         self.assertIn('copy /Y "%NEW_EXE%" "%TARGET_EXE%"', script)
+        self.assertIn("Copy failed, retry", script)
         self.assertIn('del "%OLD_EXE%"', script)
-        self.assertIn('start "" "%TARGET_EXE%"', script)
+        self.assertIn('start "" /D "%TARGET_DIR%" "%TARGET_EXE%"', script)
+        self.assertIn("Old exe still exists after retries", script)
         self.assertNotIn("pause", script.lower())
 
 

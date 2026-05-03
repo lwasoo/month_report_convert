@@ -29,7 +29,7 @@ ICON_PNG="$ROOT_DIR/assets/icon.png"
 ICON_ICNS="$ROOT_DIR/assets/icon.icns"
 ICONSET_DIR="$ROOT_DIR/build/icon.iconset"
 
-if [[ -f "$ICON_PNG" && ! -f "$ICON_ICNS" ]]; then
+if [[ -f "$ICON_PNG" ]]; then
   echo "[INFO] Generating macOS icon from assets/icon.png..."
   rm -rf "$ICONSET_DIR"
   mkdir -p "$ICONSET_DIR"
@@ -44,6 +44,9 @@ if [[ -f "$ICON_PNG" && ! -f "$ICON_ICNS" ]]; then
   sips -z 512 512 "$ICON_PNG" --out "$ICONSET_DIR/icon_512x512.png" >/dev/null
   cp "$ICON_PNG" "$ICONSET_DIR/icon_512x512@2x.png"
   iconutil -c icns "$ICONSET_DIR" -o "$ICON_ICNS"
+else
+  echo "[ERROR] Missing assets/icon.png; cannot build macOS app icon." >&2
+  exit 1
 fi
 
 echo "[INFO] Cleaning old build artifacts..."

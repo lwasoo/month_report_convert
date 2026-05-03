@@ -53,13 +53,21 @@ def launch_windows_self_updater(asset_path: Path, app_path: Path | None = None) 
         log_path=log_path,
     )
     script_path.write_text(script, encoding="utf-8")
-    vbs_path.write_text(
-        f'Set shell = CreateObject("WScript.Shell")\n'
-        f'shell.Run Chr(34) & "{script_path}" & Chr(34), 0, False\n',
-        encoding="utf-8",
-    )
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    subprocess.Popen(["wscript.exe", str(vbs_path)], close_fds=True, creationflags=creationflags)
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            f"Start-Process -FilePath {ps_quote(script_path)} -WindowStyle Hidden",
+        ],
+        close_fds=True,
+        creationflags=creationflags,
+    )
     return script_path
 
 
@@ -78,8 +86,16 @@ def build_windows_update_script(
 ) -> str:
     same_source_and_target = asset_path.resolve() == target_app.resolve()
     copy_block = (
-        'copy /Y "%NEW_EXE%" "%TARGET_EXE%" >>"%LOG%" 2>&1\n'
-        "if errorlevel 1 exit /b 1"
+        'echo Copying new exe to target... >>"%LOG%"\n'
+        'for /L %%i in (1,1,10) do (\n'
+        '  copy /Y "%NEW_EXE%" "%TARGET_EXE%" >>"%LOG%" 2>&1\n'
+        "  if not errorlevel 1 goto copied\n"
+        '  echo Copy failed, retry %%i... >>"%LOG%"\n'
+        "  timeout /t 1 /nobreak >nul\n"
+        ")\n"
+        'echo Copy failed permanently. >>"%LOG%"\n'
+        "exit /b 1\n"
+        ":copied"
         if not same_source_and_target
         else 'echo Downloaded exe is already in the target path. >>"%LOG%"'
     )
@@ -89,6 +105,7 @@ chcp 65001 >nul
 set "NEW_EXE={asset_path}"
 set "OLD_EXE={current_app}"
 set "TARGET_EXE={target_app}"
+set "TARGET_DIR={target_app.parent}"
 set "PID={pid}"
 set "LOG={log_path}"
 echo Waiting for FileToolbox to exit... >"%LOG%"
@@ -99,10 +116,30 @@ if not errorlevel 1 (
   goto waitloop
 )
 {copy_block}
-if /I not "%OLD_EXE%"=="%TARGET_EXE%" (
-  del "%OLD_EXE%" >>"%LOG%" 2>&1
+if not exist "%TARGET_EXE%" (
+  echo Target exe does not exist after copy: %TARGET_EXE% >>"%LOG%"
+  exit /b 1
 )
-start "" "%TARGET_EXE%"
+if /I not "%OLD_EXE%"=="%TARGET_EXE%" (
+  echo Deleting old exe... >>"%LOG%"
+  for /L %%i in (1,1,10) do (
+    del "%OLD_EXE%" >>"%LOG%" 2>&1
+    if not exist "%OLD_EXE%" goto deleted_old
+    echo Delete old exe failed, retry %%i... >>"%LOG%"
+    timeout /t 1 /nobreak >nul
+  )
+  echo Old exe still exists after retries: %OLD_EXE% >>"%LOG%"
+  goto start_new
+  :deleted_old
+  echo Old exe deleted. >>"%LOG%"
+)
+:start_new
+echo Starting new exe: %TARGET_EXE% >>"%LOG%"
+start "" /D "%TARGET_DIR%" "%TARGET_EXE%"
+if errorlevel 1 (
+  echo Failed to start target exe. >>"%LOG%"
+  exit /b 1
+)
 {cleanup_download}
 del "{vbs_path}" >nul 2>nul
 del "%~f0" >nul 2>nul
@@ -179,3 +216,7 @@ rm -f "$0"
 
 def sh_quote(path: Path) -> str:
     return "'" + str(path).replace("'", "'\"'\"'") + "'"
+
+
+def ps_quote(path: Path) -> str:
+    return "'" + str(path).replace("'", "''") + "'"

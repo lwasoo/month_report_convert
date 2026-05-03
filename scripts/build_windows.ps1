@@ -40,7 +40,7 @@ root = Path.cwd()
 icon_png = root / "assets" / "icon.png"
 icon_ico = root / "assets" / "icon.ico"
 img = Image.open(icon_png).convert("RGBA")
-sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+sizes = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)]
 img.save(icon_ico, sizes=sizes)
 print(icon_ico)
 '@ | & $PythonExe -
