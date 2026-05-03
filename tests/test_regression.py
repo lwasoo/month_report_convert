@@ -8,12 +8,17 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from docx import Document
+from pptx import Presentation
 
-from doc_sanitizer.document_io import apply_mapping_to_file, restore_file
+from doc_sanitizer.document_io import apply_mapping_to_file, collect_texts_for_path, restore_file
 from doc_sanitizer.fuzzy_mapping import (
     build_external_ai_prompt_sections,
+    closest_placeholder_for_token,
+    find_placeholder_like_tokens,
     payload_from_json_text,
+    placeholder_token_category,
     suggest_placeholder_repairs,
+    unresolved_placeholder_tokens,
 )
 from doc_sanitizer.llm_assist import build_llm_candidate_contexts, chunk_texts_for_llm, count_texts_with_existing_terms, select_texts_for_llm, stable_text_hash
 from doc_sanitizer.mapping import mapping_entries, read_mapping
@@ -58,6 +63,8 @@ class MappingAndPromptTests(unittest.TestCase):
         prompt, audit = build_external_ai_prompt_sections(payload)
 
         self.assertIn("__COMPANY_002__ / __COMPANY_001__", prompt)
+        self.assertIn("不得新增", prompt)
+        self.assertIn("PROJECT_015", prompt)
         self.assertNotIn("Acme", prompt)
         self.assertNotIn("映射摘要", prompt)
         self.assertNotIn("人工确认", prompt)
@@ -162,6 +169,112 @@ class MappingAndPromptTests(unittest.TestCase):
         self.assertEqual(repairs[0].canonical, "__CODE_007__")
         self.assertGreaterEqual(repairs[0].score, 0.70)
         self.assertLess(repairs[0].score, 0.90)
+
+    def test_unresolved_placeholder_tokens_report_unknown_ai_ids(self) -> None:
+        # 失败用例：外部 AI 可能生成映射表不存在的新编号；不能静默显示还原完成。
+        payload = payload_from_json_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "placeholder": "__CODE_007__",
+                            "original": "BU11-1件",
+                            "category": "CODE",
+                            "enabled": True,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+
+        tokens = unresolved_placeholder_tokens(
+            "已还原 BU11-1件，但 _CODE_008_ 和 __SUPPLIER_004T__ 仍残留。",
+            mapping_entries(payload),
+        )
+
+        self.assertEqual(tokens, ["_CODE_008_", "__SUPPLIER_004T__"])
+        self.assertEqual(placeholder_token_category("__SUPPLIER_004T__"), "SUPPLIER")
+
+    def test_unknown_placeholder_prefills_closest_numbered_candidate(self) -> None:
+        # 通过用例：未知占位符也应先按类别和编号靠近程度给出预填建议。
+        payload = payload_from_json_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "placeholder": "__SUPPLIER_001__",
+                            "original": "AmpLink",
+                            "category": "SUPPLIER",
+                            "enabled": True,
+                        },
+                        {
+                            "placeholder": "__SUPPLIER_003__",
+                            "original": "苏州立讯技术",
+                            "category": "SUPPLIER",
+                            "enabled": True,
+                        },
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+
+        placeholder, score = closest_placeholder_for_token("__SUPPLIER_003T__", mapping_entries(payload), min_score=0.65)
+
+        self.assertEqual(placeholder, "__SUPPLIER_003__")
+        self.assertGreaterEqual(score, 0.90)
+
+    def test_broken_placeholder_tail_is_detected_inside_joined_text(self) -> None:
+        # 失败用例：外部 AI 可能把 __COMPANY_007__ 改成 QuantaMPANY_007 这种粘连残片。
+        tokens = find_placeholder_like_tokens("客户CM厂QuantaMPANY_007")
+
+        self.assertIn("MPANY_007", tokens)
+
+    def test_repair_does_not_partially_replace_embedded_placeholder(self) -> None:
+        # 失败用例：不能先把 __SUPPLIER_003T__ 的子串 __SUPPLIER_003 替换掉，
+        # 否则会产生 __SUPPLIER_003__T__ 这种更坏的残留。
+        payload = payload_from_json_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "placeholder": "__SUPPLIER_003__",
+                            "original": "苏州立讯技术",
+                            "category": "SUPPLIER",
+                            "enabled": True,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+
+        repairs = suggest_placeholder_repairs("供应商 __SUPPLIER_003T__ 已签约", mapping_entries(payload), min_score=0.70)
+
+        self.assertEqual(repairs, [])
+
+    def test_repair_still_handles_placeholder_next_to_chinese_text(self) -> None:
+        # 通过用例：中文前后缀不算英文粘连，仍应识别 _CODE_007_ 这类轻微损坏占位符。
+        payload = payload_from_json_text(
+            json.dumps(
+                {
+                    "entries": [
+                        {
+                            "placeholder": "__CODE_007__",
+                            "original": "BU11-1件",
+                            "category": "CODE",
+                            "enabled": True,
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
+
+        repairs = suggest_placeholder_repairs("其中_CODE_007_类", mapping_entries(payload), min_score=0.70)
+
+        self.assertEqual(repairs[0].canonical, "__CODE_007__")
 
     def test_invalid_mapping_json_is_rejected(self) -> None:
         # 失败用例：外部输入不是映射对象时应直接报错，避免生成误导性的 Prompt。
@@ -268,6 +381,88 @@ class DocumentRoundTripTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 restore_file(input_path=input_path, output_path=output_path, mapping_path=mapping_path)
+
+    def test_pptx_restore_uses_confirmed_unknown_placeholder_mapping(self) -> None:
+        # 失败用例：外部 AI 生成了映射表里不存在的新编号时，用户确认后的映射应能用于 PPTX 还原。
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_path = root / "ai_output.pptx"
+            output_path = root / "restored.pptx"
+            mapping_path = root / "mapping.json"
+
+            prs = Presentation()
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            box = slide.shapes.add_textbox(0, 0, 4000000, 800000)
+            box.text_frame.text = "完成 PROJECT_015 与瑞为协议终稿确定。"
+            prs.save(input_path)
+            mapping_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "placeholder": "__PROJECT_011__",
+                                "original": "瑞为协议",
+                                "category": "PROJECT",
+                                "enabled": True,
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            restore_file(
+                input_path=input_path,
+                output_path=output_path,
+                mapping_path=mapping_path,
+                placeholder_repairs={"PROJECT_015": "__PROJECT_011__"},
+            )
+
+            restored_text = "\n".join(collect_texts_for_path(output_path))
+            self.assertIn("瑞为协议", restored_text)
+            self.assertNotIn("PROJECT_015", restored_text)
+
+    def test_pptx_restore_allows_custom_unknown_placeholder_text(self) -> None:
+        # 失败用例：映射表里没有对应项时，用户仍应能手动输入原词完成还原。
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_path = root / "ai_output.pptx"
+            output_path = root / "restored.pptx"
+            mapping_path = root / "mapping.json"
+
+            prs = Presentation()
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            box = slide.shapes.add_textbox(0, 0, 4000000, 800000)
+            box.text_frame.text = "供应商 __SUPPLIER_004T__ 已签约。"
+            prs.save(input_path)
+            mapping_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "placeholder": "__SUPPLIER_001__",
+                                "original": "AmpLink",
+                                "category": "SUPPLIER",
+                                "enabled": True,
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            restore_file(
+                input_path=input_path,
+                output_path=output_path,
+                mapping_path=mapping_path,
+                placeholder_repairs={"__SUPPLIER_004T__": "Custom & Partner"},
+            )
+
+            restored_text = "\n".join(collect_texts_for_path(output_path))
+            self.assertIn("Custom & Partner", restored_text)
+            self.assertNotIn("__SUPPLIER_004T__", restored_text)
 
 
 class LlmAssistPerformanceTests(unittest.TestCase):

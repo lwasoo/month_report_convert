@@ -12,6 +12,15 @@ from .mapping import ReplacementItem, mapping_entries, normalize_entries
 
 
 PLACEHOLDER_RE = re.compile(r"_{0,2}([A-Za-z][A-Za-z0-9]*)(?:[\s_\-]+(\d{1,5}|MANUAL))_{0,2}")
+PLACEHOLDER_LIKE_RE = re.compile(
+    r"_{0,2}(COMPANY|PERSON|PROJECT|CASE|CODE|CUSTOMER|SUPPLIER|TITLE|AMOUNT)(?:[\s_\-]+)(\d{1,5}|MANUAL)[A-Za-z]*_{0,2}",
+    re.IGNORECASE,
+)
+BROKEN_PLACEHOLDER_TAIL_RE = re.compile(
+    r"([A-Za-z]{3,})(?:[\s_\-]+)(\d{1,5}|MANUAL)[A-Za-z]*_{0,2}",
+    re.IGNORECASE,
+)
+PLACEHOLDER_CATEGORIES = ("COMPANY", "PERSON", "PROJECT", "CASE", "CODE", "CUSTOMER", "SUPPLIER", "TITLE", "AMOUNT")
 COMPANY_SUFFIXES = (
     "股份有限公司",
     "有限责任公司",
@@ -256,6 +265,77 @@ def placeholder_repair_score(token_parts: PlaceholderParts, target_parts: Placeh
     return 0.0
 
 
+def closest_placeholder_for_token(token: str, items: list[ReplacementItem], min_score: float = 0.0) -> tuple[str, float]:
+    token_parts = parse_placeholder_parts(token) or parse_placeholder_like_parts(token)
+    if token_parts is None:
+        return "", 0.0
+    best_placeholder = ""
+    best_score = 0.0
+    for item in items:
+        target_parts = parse_placeholder_parts(item.placeholder)
+        if target_parts is None:
+            continue
+        score = placeholder_repair_score(token_parts, target_parts)
+        if score > best_score:
+            best_placeholder = item.placeholder
+            best_score = score
+    if best_score < min_score:
+        return "", best_score
+    return best_placeholder, best_score
+
+
+def parse_placeholder_like_parts(token: str) -> PlaceholderParts | None:
+    match = PLACEHOLDER_LIKE_RE.fullmatch(unicodedata.normalize("NFKC", token).strip())
+    if not match:
+        return None
+    category = match.group(1).upper()
+    raw_index = match.group(2)
+    if raw_index.upper() == "MANUAL":
+        return PlaceholderParts(category=category, index="MANUAL", raw_index="MANUAL", canonical=f"__{category}_MANUAL__")
+    normalized_index = f"{int(raw_index):03d}"
+    return PlaceholderParts(category=category, index=normalized_index, raw_index=raw_index, canonical=f"__{category}_{normalized_index}__")
+
+
+def find_placeholder_like_tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    seen_spans: list[tuple[int, int]] = []
+    for match in PLACEHOLDER_LIKE_RE.finditer(text):
+        tokens.append(match.group(0))
+        seen_spans.append(match.span())
+    for match in BROKEN_PLACEHOLDER_TAIL_RE.finditer(text):
+        if any(start <= match.start() < end for start, end in seen_spans):
+            continue
+        token = best_broken_placeholder_tail(match.group(0))
+        if token:
+            tokens.append(token)
+    return tokens
+
+
+def best_broken_placeholder_tail(token: str) -> str:
+    parts = re.match(r"([A-Za-z]{3,})([\s_\-]+)(\d{1,5}|MANUAL)([A-Za-z]*_{0,2})$", token, re.IGNORECASE)
+    if not parts:
+        return ""
+    prefix, separator, index, suffix = parts.groups()
+    upper_prefix = prefix.upper()
+    best_category = ""
+    best_score = 0.0
+    best_tail_start = 0
+    for category in PLACEHOLDER_CATEGORIES:
+        min_start = max(0, len(prefix) - len(category) - 2)
+        for tail_start in range(min_start, len(prefix)):
+            candidate = upper_prefix[tail_start:]
+            if len(candidate) < 3:
+                continue
+            score = placeholder_category_score(candidate, category)
+            if score > best_score:
+                best_category = category
+                best_score = score
+                best_tail_start = tail_start
+    if best_score < 0.86:
+        return ""
+    return f"{prefix[best_tail_start:]}{separator}{index}{suffix}"
+
+
 def suggest_placeholder_repairs(text: str, items: list[ReplacementItem], min_score: float = 0.70) -> list[PlaceholderRepair]:
     canonical_set = {item.placeholder.upper(): item.placeholder for item in items}
     target_parts = [
@@ -266,6 +346,8 @@ def suggest_placeholder_repairs(text: str, items: list[ReplacementItem], min_sco
     ]
     repairs: list[PlaceholderRepair] = []
     for match in PLACEHOLDER_RE.finditer(text):
+        if is_embedded_placeholder_match(text, match.start(), match.end()):
+            continue
         token = match.group(0)
         token_parts = parse_placeholder_parts(token)
         if not token_parts:
@@ -284,6 +366,44 @@ def suggest_placeholder_repairs(text: str, items: list[ReplacementItem], min_sco
         if best_target and best_score >= min_score and token != best_target:
             repairs.append(PlaceholderRepair(token=token, canonical=best_target, score=best_score))
     return repairs
+
+
+def is_embedded_placeholder_match(text: str, start: int, end: int) -> bool:
+    before = text[start - 1] if start > 0 else ""
+    after = text[end] if end < len(text) else ""
+    return bool((before and is_ascii_word_char(before)) or (after and is_ascii_word_char(after)))
+
+
+def is_ascii_word_char(char: str) -> bool:
+    return char == "_" or ("0" <= char <= "9") or ("A" <= char <= "Z") or ("a" <= char <= "z")
+
+
+def unresolved_placeholder_tokens(
+    text: str,
+    items: list[ReplacementItem],
+    placeholder_repairs: dict[str, str] | None = None,
+) -> list[str]:
+    known = {item.placeholder.upper() for item in items}
+    repaired = {token.upper() for token in (placeholder_repairs or {})}
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for token in find_placeholder_like_tokens(text):
+        if token.upper() in repaired:
+            continue
+        parts = parse_placeholder_parts(token)
+        if parts and parts.canonical.upper() in known:
+            continue
+        key = token.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        tokens.append(token)
+    return tokens
+
+
+def placeholder_token_category(token: str) -> str:
+    match = PLACEHOLDER_LIKE_RE.fullmatch(unicodedata.normalize("NFKC", token).strip())
+    return match.group(1).upper() if match else ""
 
 
 def repair_placeholder_text(
@@ -318,13 +438,11 @@ def build_external_ai_prompt_sections(payload: dict[str, Any]) -> tuple[str, str
     groups = group_entity_matches(items)
 
     prompt_lines = [
-        "你将处理一份已经脱敏的文档。请严格遵守以下规则：",
-        "",
-        "1. 所有占位符必须原样保留，例如 __COMPANY_001__、__PERSON_003__。",
-        "2. 不要翻译、改写、拆分、合并、加空格或重新编号任何占位符。",
-        "3. 不要把占位符改成 CUSTOMER_001、Company 1、[客户] 等其他写法。",
-        "4. 如果删除整句内容，其中的占位符可以一起删除；否则必须保留原占位符。",
-        "5. 不要尝试推测、恢复或输出任何原始敏感词。",
+        "你将处理一份已经脱敏的文档。请遵守：",
+        "1. 占位符必须逐字保留，只能使用输入中已经出现的占位符，如 __COMPANY_001__、__PERSON_003__。",
+        "2. 不得新增、猜测、改写、重新编号任何占位符；不要生成 PROJECT_015、CUSTOMER_001、Company 1、[客户] 等新写法。",
+        "3. 除非删除整句，否则句中的占位符必须保留原样。",
+        "4. 不要输出、恢复或猜测任何原始敏感词。",
         "",
     ]
 
@@ -338,7 +456,6 @@ def build_external_ai_prompt_sections(payload: dict[str, Any]) -> tuple[str, str
     prompt_lines.extend(
         [
             "最终交付要求：",
-            "- 只返回处理后的正文或用户要求的格式。",
             "- 返回前自检：所有仍被保留的占位符必须与输入完全一致。",
         ]
     )

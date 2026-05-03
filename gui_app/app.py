@@ -146,6 +146,7 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin, PromptTab
         style.configure("Section.TLabelframe", background="#ffffff", borderwidth=1, relief="solid")
         style.configure("Section.TLabelframe.Label", background="#ffffff", foreground="#17324d", font=("Microsoft YaHei UI", 11, "bold"))
         style.configure("Field.TLabel", background="#ffffff", foreground="#2f485f")
+        style.configure("Mono.TLabel", background="#ffffff", foreground="#17324d", font=("Consolas", 10))
         style.configure("Hint.TLabel", background="#ffffff", foreground="#7b8da1", font=("Microsoft YaHei UI", 9))
         style.configure("Status.TLabel", background="#ffffff", foreground="#5f7389", font=("Microsoft YaHei UI", 9))
         style.configure("TButton", padding=(10, 6))

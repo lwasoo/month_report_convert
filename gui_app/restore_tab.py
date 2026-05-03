@@ -6,7 +6,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from doc_sanitizer import read_mapping, restore_file
 from doc_sanitizer.document_io import collect_texts_for_path
-from doc_sanitizer.fuzzy_mapping import PlaceholderRepair, suggest_placeholder_repairs
+from doc_sanitizer.fuzzy_mapping import PlaceholderRepair, closest_placeholder_for_token, placeholder_token_category, suggest_placeholder_repairs, unresolved_placeholder_tokens
 from doc_sanitizer.mapping import mapping_entries
 
 
@@ -99,6 +99,7 @@ class RestoreTabMixin:
             self.restore_status_var.set("已取消")
             return
         placeholder_repairs, auto_repairs, confirmed_repairs = repair_plan
+        manual_repairs = getattr(self, "_last_manual_placeholder_repairs", {})
         params = {
             "input_path": input_path,
             "mapping_path": mapping_path,
@@ -106,6 +107,7 @@ class RestoreTabMixin:
             "placeholder_repairs": placeholder_repairs,
             "auto_repairs": auto_repairs,
             "confirmed_repairs": confirmed_repairs,
+            "manual_repairs": manual_repairs,
         }
         self._start_worker("restore", self.restore_status_var, "[INFO] 开始还原文档...", lambda: self._restore_worker(params))
 
@@ -116,12 +118,14 @@ class RestoreTabMixin:
         placeholder_repairs = params["placeholder_repairs"]
         auto_repairs = params["auto_repairs"]
         confirmed_repairs = params["confirmed_repairs"]
+        manual_repairs = params["manual_repairs"]
         assert isinstance(input_path, Path)
         assert isinstance(mapping_path, Path)
         assert isinstance(output_path, Path)
         assert isinstance(placeholder_repairs, dict)
         assert isinstance(auto_repairs, dict)
         assert isinstance(confirmed_repairs, dict)
+        assert isinstance(manual_repairs, dict)
         restore_file(
             input_path=input_path,
             output_path=output_path,
@@ -142,8 +146,32 @@ class RestoreTabMixin:
         for token, canonical in confirmed_repairs.items():
             original = originals_by_placeholder.get(canonical, "")
             self.log_queue.put(("restore", f"[INFO] 已按用户确认修复占位符: {token} -> {canonical} -> {original}"))
+        for token, canonical in manual_repairs.items():
+            original = originals_by_placeholder.get(canonical, canonical)
+            self.log_queue.put(("restore", f"[INFO] 已按用户指定还原未知占位符: {token} -> {canonical} -> {original}"))
+        unresolved = self._collect_unresolved_placeholders(output_path, mapping_path, placeholder_repairs)
+        if unresolved:
+            self.log_queue.put(("restore", f"[WARN] 还原后仍发现 {len(unresolved)} 个未还原占位符，通常是外部 AI 生成了映射表里不存在的新编号。"))
+            for token in unresolved[:20]:
+                self.log_queue.put(("restore", f"[WARN] 未还原占位符: {token}"))
+            if len(unresolved) > 20:
+                self.log_queue.put(("restore", f"[WARN] 其余 {len(unresolved) - 20} 个未显示，请检查输出文件。"))
         self.log_queue.put(("restore", f"[INFO] 还原完成: {output_path}"))
         self.root.after(0, lambda: self._after_restore_complete(output_path))
+
+    def _collect_unresolved_placeholders(self, output_path: Path, mapping_path: Path, placeholder_repairs: dict[str, str]) -> list[str]:
+        payload = read_mapping(mapping_path)
+        items = mapping_entries(payload, only_enabled=False)
+        tokens: list[str] = []
+        seen: set[str] = set()
+        for text in collect_texts_for_path(output_path):
+            for token in unresolved_placeholder_tokens(text, items, placeholder_repairs=placeholder_repairs):
+                key = token.upper()
+                if key in seen:
+                    continue
+                seen.add(key)
+                tokens.append(token)
+        return tokens
 
     def _after_restore_complete(self, output_path: Path) -> None:
         self.restore_output_var.set(str(output_path))
@@ -153,35 +181,111 @@ class RestoreTabMixin:
         payload = read_mapping(mapping_path)
         items = mapping_entries(payload, only_enabled=False)
         repairs_by_pair: dict[tuple[str, str], PlaceholderRepair] = {}
-        for text in collect_texts_for_path(input_path):
+        unresolved_tokens: list[str] = []
+        unresolved_seen: set[str] = set()
+        texts = collect_texts_for_path(input_path)
+        for text in texts:
             for repair in suggest_placeholder_repairs(text, items, min_score=0.70):
                 key = (repair.token, repair.canonical)
                 current = repairs_by_pair.get(key)
                 if current is None or repair.score > current.score:
                     repairs_by_pair[key] = repair
+            for token in unresolved_placeholder_tokens(text, items):
+                key = token.upper()
+                if key in unresolved_seen:
+                    continue
+                unresolved_seen.add(key)
+                unresolved_tokens.append(token)
         repairs = sorted(repairs_by_pair.values(), key=lambda item: (item.canonical, item.token))
-        if not repairs:
+        self._last_manual_placeholder_repairs = {}
+        if not repairs and not unresolved_tokens:
             return {}, {}, {}
         auto_repairs = {repair.token: repair.canonical for repair in repairs if repair.score >= 0.90}
         needs_confirmation = [repair for repair in repairs if repair.score < 0.90]
-        if not needs_confirmation:
-            return auto_repairs, auto_repairs, {}
-        confirmed_repairs = self._show_placeholder_repair_dialog(needs_confirmation, payload)
-        if confirmed_repairs is None:
-            return None
-        all_repairs = {**auto_repairs, **confirmed_repairs}
+        confirmed_repairs: dict[str, str] = {}
+        if needs_confirmation:
+            selected_repairs = self._show_placeholder_repair_dialog(needs_confirmation, payload)
+            if selected_repairs is None:
+                return None
+            confirmed_repairs = selected_repairs
+        covered_tokens = {repair.token.upper() for repair in repairs}
+        manual_tokens = [token for token in unresolved_tokens if token.upper() not in covered_tokens]
+        manual_repairs: dict[str, str] = {}
+        if manual_tokens:
+            selected_manual_repairs = self._show_unknown_placeholder_dialog(manual_tokens, payload, items)
+            if selected_manual_repairs is None:
+                return None
+            manual_repairs = selected_manual_repairs
+            self._last_manual_placeholder_repairs = manual_repairs
+        all_repairs = {**auto_repairs, **confirmed_repairs, **manual_repairs}
         return all_repairs, auto_repairs, confirmed_repairs
 
+    def _show_unknown_placeholder_dialog(self, tokens: list[str], payload: dict[str, object], items) -> dict[str, str] | None:
+        labels_by_category, placeholder_by_label = self._placeholder_choice_labels(payload)
+        rows: list[tuple[str, str, str, str]] = []
+        for token in tokens:
+            closest_placeholder, score = closest_placeholder_for_token(token, items, min_score=0.65)
+            rows.append(
+                (
+                    token,
+                    placeholder_token_category(token),
+                    closest_placeholder,
+                    f"{score:.2f}" if closest_placeholder else "",
+                )
+            )
+        dialog = self._build_placeholder_choice_dialog(
+            title="指定未知占位符",
+            intro="发现映射表里不存在的占位符。请选择对应映射项，或直接输入要还原的原词；留空的项目会保留在文件中，并在日志里提示。",
+            rows=rows,
+            labels_by_category=labels_by_category,
+            placeholder_by_label=placeholder_by_label,
+        )
+        return dialog
+
     def _show_placeholder_repair_dialog(self, repairs: list[PlaceholderRepair], payload: dict[str, object]) -> dict[str, str] | None:
-        entries = payload.get("entries", [])
-        by_placeholder = {
-            str(entry.get("placeholder", "")): str(entry.get("original", ""))
-            for entry in entries
-            if isinstance(entry, dict)
-        }
+        labels_by_category, placeholder_by_label = self._placeholder_choice_labels(payload)
+        rows: list[tuple[str, str, str, str]] = []
+        for repair in repairs:
+            category = placeholder_token_category(repair.canonical) or placeholder_token_category(repair.token)
+            rows.append((repair.token, category, repair.canonical, f"{repair.score:.2f}"))
+        return self._build_placeholder_choice_dialog(
+            title="确认相似占位符",
+            intro="发现可能被外部 AI 改坏的占位符。系统已给出建议，你可以改选映射项，也可以直接输入要还原的原词；留空则不还原。",
+            rows=rows,
+            labels_by_category=labels_by_category,
+            placeholder_by_label=placeholder_by_label,
+        )
+
+    def _placeholder_choice_labels(self, payload: dict[str, object]) -> tuple[dict[str, list[str]], dict[str, str]]:
+        entries = [
+            entry
+            for entry in payload.get("entries", [])
+            if isinstance(entry, dict) and str(entry.get("placeholder", "")).strip() and str(entry.get("original", "")).strip()
+        ]
+        labels_by_category: dict[str, list[str]] = {}
+        placeholder_by_label: dict[str, str] = {}
+        for entry in entries:
+            placeholder = str(entry.get("placeholder", "")).strip()
+            original = str(entry.get("original", "")).strip()
+            category = str(entry.get("category", "")).strip().upper() or placeholder.strip("_").split("_", 1)[0].upper()
+            label = f"{placeholder} -> {original}"
+            labels_by_category.setdefault(category, []).append(label)
+            placeholder_by_label[label] = placeholder
+        for category in labels_by_category:
+            labels_by_category[category].sort()
+        return labels_by_category, placeholder_by_label
+
+    def _build_placeholder_choice_dialog(
+        self,
+        title: str,
+        intro: str,
+        rows: list[tuple[str, str, str, str]],
+        labels_by_category: dict[str, list[str]],
+        placeholder_by_label: dict[str, str],
+    ) -> dict[str, str] | None:
         dialog = tk.Toplevel(self.root)
-        dialog.title("确认相似占位符")
-        dialog.geometry("780x420")
+        dialog.title(title)
+        dialog.geometry("980x460")
         dialog.transient(self.root)
         dialog.grab_set()
         dialog.columnconfigure(0, weight=1)
@@ -189,68 +293,45 @@ class RestoreTabMixin:
 
         ttk.Label(
             dialog,
-            text="发现一些可能被外部 AI 改坏的占位符，置信度不够高，不能自动判断。请用按钮确认是否按右侧占位符还原。",
+            text=intro,
             style="Field.TLabel",
-            wraplength=730,
+            wraplength=920,
             justify="left",
         ).grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 8))
 
-        tree = ttk.Treeview(
-            dialog,
-            columns=("enabled", "found", "canonical", "original", "score"),
-            show="headings",
-            height=12,
-            style="Mapping.Treeview",
-        )
-        for key, label, width in [
-            ("enabled", "使用", 60),
-            ("found", "文件中出现", 180),
-            ("canonical", "映射占位符", 180),
-            ("original", "原始词", 240),
-            ("score", "相似度", 90),
-        ]:
-            tree.heading(key, text=label)
-            tree.column(key, width=width, anchor="w", stretch=True)
-        tree.grid(row=1, column=0, sticky="nsew", padx=14)
+        body = ttk.Frame(dialog, padding=(14, 0, 14, 0))
+        body.grid(row=1, column=0, sticky="nsew")
+        body.columnconfigure(2, weight=1)
+        ttk.Label(body, text="文件中出现", style="Field.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(body, text="置信度", style="Field.TLabel").grid(row=0, column=1, sticky="w", pady=(0, 6), padx=(12, 0))
+        ttk.Label(body, text="选择对应映射", style="Field.TLabel").grid(row=0, column=2, sticky="w", pady=(0, 6), padx=(12, 0))
 
-        selected: dict[str, bool] = {}
-        for idx, repair in enumerate(repairs):
-            iid = str(idx)
-            selected[iid] = False
-            tree.insert(
-                "",
-                "end",
-                iid=iid,
-                values=(
-                    "是" if selected[iid] else "否",
-                    repair.token,
-                    repair.canonical,
-                    by_placeholder.get(repair.canonical, ""),
-                    f"{repair.score:.2f}",
-                ),
-            )
-
-        def set_enabled(iid: str, enabled: bool) -> None:
-            selected[iid] = enabled
-            values = list(tree.item(iid, "values"))
-            values[0] = "是" if enabled else "否"
-            tree.item(iid, values=values)
-
-        def toggle_current() -> None:
-            for iid in tree.selection():
-                set_enabled(iid, not selected[iid])
-
-        tree.bind("<Double-1>", lambda _event: toggle_current())
+        choices: dict[str, tk.StringVar] = {}
+        all_labels = [label for values in labels_by_category.values() for label in values]
+        label_by_placeholder = {placeholder: label for label, placeholder in placeholder_by_label.items()}
+        for row, (token, category, default_placeholder, score) in enumerate(rows, start=1):
+            labels = labels_by_category.get(category, [])
+            if not labels:
+                labels = all_labels
+            values = ["", *labels]
+            default_label = label_by_placeholder.get(default_placeholder, "")
+            var = tk.StringVar(value=default_label)
+            choices[token] = var
+            ttk.Label(body, text=token, style="Mono.TLabel").grid(row=row, column=0, sticky="w", pady=4)
+            ttk.Label(body, text=score or "-", style="Field.TLabel").grid(row=row, column=1, sticky="w", pady=4, padx=(12, 0))
+            combo = ttk.Combobox(body, textvariable=var, values=values)
+            combo.grid(row=row, column=2, sticky="ew", pady=4, padx=(12, 0))
 
         result: dict[str, str] | None = None
 
         def confirm() -> None:
             nonlocal result
-            result = {
-                repairs[int(iid)].token: repairs[int(iid)].canonical
-                for iid, is_selected in selected.items()
-                if is_selected
-            }
+            result = {}
+            for token, var in choices.items():
+                selected = var.get().strip()
+                if not selected:
+                    continue
+                result[token] = placeholder_by_label.get(selected, selected)
             dialog.destroy()
 
         def cancel() -> None:
@@ -260,11 +341,8 @@ class RestoreTabMixin:
 
         action_row = ttk.Frame(dialog, padding=14)
         action_row.grid(row=2, column=0, sticky="ew")
-        ttk.Button(action_row, text="确认选中项", style="Secondary.TButton", command=toggle_current).pack(side="left")
-        ttk.Button(action_row, text="全选", style="Secondary.TButton", command=lambda: [set_enabled(iid, True) for iid in selected]).pack(side="left", padx=(8, 0))
-        ttk.Button(action_row, text="全不选", style="Secondary.TButton", command=lambda: [set_enabled(iid, False) for iid in selected]).pack(side="left", padx=(8, 0))
-        ttk.Button(action_row, text="确认并还原", style="Primary.TButton", command=confirm).pack(side="right")
         ttk.Button(action_row, text="取消", style="Secondary.TButton", command=cancel).pack(side="right", padx=(0, 8))
+        ttk.Button(action_row, text="确认并还原", style="Primary.TButton", command=confirm).pack(side="right")
 
         dialog.protocol("WM_DELETE_WINDOW", cancel)
         self.root.wait_window(dialog)

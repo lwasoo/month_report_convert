@@ -37,7 +37,7 @@ def collect_texts_for_path(input_path: Path) -> list[str]:
             return collect_texts_for_path(converted)
     if input_path.suffix.lower() == ".docx":
         return dedupe_texts([*collect_doc_texts(Document(str(input_path))), *collect_docx_package_texts(input_path)])
-    return collect_ppt_texts(Presentation(str(input_path)))
+    return dedupe_texts([*collect_ppt_texts(Presentation(str(input_path))), *collect_pptx_package_texts(input_path)])
 
 
 def collect_doc_texts(doc: Document) -> list[str]:
@@ -79,10 +79,36 @@ def collect_docx_package_texts(input_path: Path) -> list[str]:
     return texts
 
 
+def collect_pptx_package_texts(input_path: Path) -> list[str]:
+    texts: list[str] = []
+    with ZipFile(input_path, "r") as zin:
+        for name in zin.namelist():
+            if not is_pptx_text_xml_part(name):
+                continue
+            try:
+                root = ET.fromstring(zin.read(name))
+            except ET.ParseError:
+                continue
+            for elem in root.iter():
+                if elem.text:
+                    text = normalize_text(elem.text)
+                    if text:
+                        texts.append(text)
+    return texts
+
+
 def is_docx_text_xml_part(name: str) -> bool:
     if not name.startswith("word/") or not name.endswith(".xml"):
         return False
     if name.startswith("word/_rels/"):
+        return False
+    return True
+
+
+def is_pptx_text_xml_part(name: str) -> bool:
+    if not name.startswith("ppt/") or not name.endswith(".xml"):
+        return False
+    if "/_rels/" in name or name.startswith("ppt/_rels/"):
         return False
     return True
 
@@ -307,13 +333,44 @@ def apply_replacements_to_docx_package(
         temp_path.unlink(missing_ok=True)
 
 
+def apply_replacements_to_pptx_package(
+    path: Path,
+    items: list[ReplacementItem],
+    reverse: bool = False,
+    placeholder_repairs: dict[str, str] | None = None,
+) -> None:
+    if not items:
+        return
+    temp_path = path.with_name(f"{path.stem}.tmp{path.suffix}")
+    changed_any = False
+    with ZipFile(path, "r") as zin, ZipFile(temp_path, "w", ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if is_pptx_text_xml_part(info.filename):
+                try:
+                    text = data.decode("utf-8")
+                except UnicodeDecodeError:
+                    text = ""
+                if text:
+                    updated = replace_xml_text(text, items, reverse=reverse, placeholder_repairs=placeholder_repairs)
+                    if updated != text:
+                        data = updated.encode("utf-8")
+                        changed_any = True
+            zout.writestr(info, data)
+    if changed_any:
+        temp_path.replace(path)
+    else:
+        temp_path.unlink(missing_ok=True)
+
+
 def replace_xml_text(
     xml_text: str,
     items: list[ReplacementItem],
     reverse: bool = False,
     placeholder_repairs: dict[str, str] | None = None,
 ) -> str:
-    updated = repair_placeholder_text(xml_text, items, confirmed_repairs=placeholder_repairs) if reverse else xml_text
+    xml_repairs = {token: escape(value) for token, value in (placeholder_repairs or {}).items()}
+    updated = repair_placeholder_text(xml_text, items, confirmed_repairs=xml_repairs) if reverse else xml_text
     for item in items:
         old = item.placeholder if reverse else item.original
         new = item.original if reverse else item.placeholder
@@ -354,6 +411,7 @@ def apply_mapping_to_file(
         apply_replacements_to_ppt(prs, mapping_entries(payload))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(output_path))
+        apply_replacements_to_pptx_package(output_path, mapping_entries(payload))
     if mapping_path is not None:
         mapping_path.parent.mkdir(parents=True, exist_ok=True)
         payload["sanitized_file"] = str(output_path)
@@ -392,6 +450,7 @@ def restore_file(
         apply_replacements_to_ppt(prs, items, reverse=True, placeholder_repairs=placeholder_repairs)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(output_path))
+        apply_replacements_to_pptx_package(output_path, items, reverse=True, placeholder_repairs=placeholder_repairs)
     log(f"还原完成: {output_path}")
 
 
