@@ -21,6 +21,7 @@ echo "[INFO] Stamping app version: $VERSION"
 printf '%s\n' "$VERSION" > "$ROOT_DIR/gui_app/version.txt"
 
 echo "[INFO] Installing runtime/build dependencies..."
+"$PYTHON_BIN" -m pip cache purge >/dev/null 2>&1 || true
 "$PYTHON_BIN" -m pip install --no-cache-dir --upgrade pip
 "$PYTHON_BIN" -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
 

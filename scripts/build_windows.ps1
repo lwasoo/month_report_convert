@@ -25,6 +25,7 @@ Write-Host "[INFO] Stamping app version: $Version"
 Set-Content -Path (Join-Path $Root "gui_app\version.txt") -Value $Version -Encoding UTF8
 
 Write-Host "[INFO] Installing runtime/build dependencies..."
+& $PythonExe -m pip cache purge *> $null
 & $PythonExe -m pip install --no-cache-dir --upgrade pip
 & $PythonExe -m pip install --no-cache-dir -r requirements.txt -r requirements-build.txt
 
