@@ -21,12 +21,15 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+import customtkinter as ctk
+
 from .about_tab import AboutTabMixin
 from .convert_tab import ConvertTabMixin
 from .defaults import APP_DISPLAY_NAME, APP_VERSION, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 from .prompt_tab import PromptTabMixin
 from .restore_tab import RestoreTabMixin
 from .sanitize_tab import SanitizeTabMixin
+from .update_preferences import is_auto_update_check_enabled
 from office_conversion import LIBREOFFICE_DOWNLOAD_URL, OfficeConversionError
 from report_converter.common import route_logs_to
 
@@ -95,6 +98,9 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin, PromptTab
         self.manual_placeholder_hint = "可留空；也可写 COMPANY 或 __COMPANY_010__"
         self.app_icon_image: tk.PhotoImage | None = None
         self.app_icon_images: list[tk.PhotoImage] = []
+        self.nav_buttons: dict[str, ctk.CTkButton] = {}
+        self.nav_pages: dict[str, ttk.Frame] = {}
+        self.active_nav_key = ""
 
         self._configure_style()
         self._apply_window_icon()
@@ -103,7 +109,8 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin, PromptTab
         self._update_sanitize_action_states()
         self._pump_logs()
         self.root.after(300, self.detect_models_async)
-        self.root.after(1800, lambda: self.check_updates_async(silent=True))
+        if is_auto_update_check_enabled():
+            self.root.after(1800, lambda: self.check_updates_async(silent=True))
 
     def _resource_path(self, relative_path: str) -> Path:
         meipass = getattr(sys, "_MEIPASS", None)
@@ -135,78 +142,180 @@ class ConverterGUI(ConvertTabMixin, SanitizeTabMixin, RestoreTabMixin, PromptTab
             self.app_icon_images = []
 
     def _configure_style(self) -> None:
-        style = ttk.Style()
+        ctk.set_appearance_mode("light")
+        ctk.set_default_color_theme("blue")
+        self.ttk_style = ttk.Style()
         try:
-            style.theme_use("vista" if sys.platform == "win32" else "clam")
+            self.ttk_style.theme_use("vista" if sys.platform == "win32" else "clam")
         except tk.TclError:
             try:
-                style.theme_use("clam")
+                self.ttk_style.theme_use("clam")
             except tk.TclError:
                 pass
+        self._apply_base_style()
 
-        self.root.configure(bg="#f6f8fb")
+    def _palette(self) -> dict[str, str]:
+        return {
+            "app_bg": "#eef3f8",
+            "panel": "#eef3f8",
+            "card": "#ffffff",
+            "sidebar": "#172236",
+            "sidebar_hover": "#22324c",
+            "text": "#17324d",
+            "muted": "#64748b",
+            "field": "#2f485f",
+            "accent": "#2f6fed",
+            "tree_bg": "#ffffff",
+            "tree_heading": "#f5f8fc",
+        }
+
+    def _apply_base_style(self) -> None:
+        colors = self._palette()
+        try:
+            self.root.configure(fg_color=colors["app_bg"])
+        except tk.TclError:
+            self.root.configure(bg=colors["app_bg"])
+        style = self.ttk_style
         style.configure(".", font=("Microsoft YaHei UI", 10))
-        style.configure("App.TFrame", background="#f6f8fb")
-        style.configure("Card.TFrame", background="#ffffff")
-        style.configure("Header.TFrame", background="#f6f8fb")
-        style.configure("HeaderAccent.TFrame", background="#2f6fed")
-        style.configure("HeaderTitle.TLabel", background="#f6f8fb", foreground="#17324d", font=("Microsoft YaHei UI", 16, "bold"))
-        style.configure("HeaderSub.TLabel", background="#f6f8fb", foreground="#70849a", font=("Microsoft YaHei UI", 9))
-        style.configure("AboutThanks.TLabel", background="#ffffff", foreground="#17324d", font=("Microsoft YaHei UI", 22, "bold"))
-        style.configure("RiskNotice.TLabel", background="#ffffff", foreground="#9a3b2f", font=("Microsoft YaHei UI", 10))
-        style.configure("Section.TLabelframe", background="#ffffff", borderwidth=1, relief="solid")
-        style.configure("Section.TLabelframe.Label", background="#ffffff", foreground="#17324d", font=("Microsoft YaHei UI", 11, "bold"))
-        style.configure("Field.TLabel", background="#ffffff", foreground="#2f485f")
-        style.configure("Mono.TLabel", background="#ffffff", foreground="#17324d", font=("Consolas", 10))
-        style.configure("Hint.TLabel", background="#ffffff", foreground="#7b8da1", font=("Microsoft YaHei UI", 9))
-        style.configure("Status.TLabel", background="#ffffff", foreground="#5f7389", font=("Microsoft YaHei UI", 9))
+        style.configure("App.TFrame", background=colors["card"])
+        style.configure("Card.TFrame", background=colors["card"])
+        style.configure("Header.TFrame", background=colors["app_bg"])
+        style.configure("HeaderTitle.TLabel", background=colors["app_bg"], foreground=colors["text"], font=("Microsoft YaHei UI", 16, "bold"))
+        style.configure("HeaderSub.TLabel", background=colors["app_bg"], foreground=colors["muted"], font=("Microsoft YaHei UI", 9))
+        style.configure("AboutThanks.TLabel", background=colors["card"], foreground=colors["text"], font=("Microsoft YaHei UI", 22, "bold"))
+        style.configure("RiskNotice.TLabel", background=colors["card"], foreground="#f97361", font=("Microsoft YaHei UI", 10))
+        style.configure("Section.TLabelframe", background=colors["card"], borderwidth=1, relief="solid")
+        style.configure("Section.TLabelframe.Label", background=colors["card"], foreground=colors["text"], font=("Microsoft YaHei UI", 11, "bold"))
+        style.configure("Field.TLabel", background=colors["card"], foreground=colors["field"])
+        style.configure("Mono.TLabel", background=colors["card"], foreground=colors["text"], font=("Consolas", 10))
+        style.configure("Hint.TLabel", background=colors["card"], foreground=colors["muted"], font=("Microsoft YaHei UI", 9))
+        style.configure("Status.TLabel", background=colors["card"], foreground=colors["muted"], font=("Microsoft YaHei UI", 9))
         style.configure("TButton", padding=(10, 6))
-        style.configure("TEntry", padding=(6, 4))
-        style.configure("TCombobox", padding=(6, 4))
-        style.configure("TNotebook", background="#f6f8fb", borderwidth=0, tabmargins=(0, 0, 0, 0))
-        style.configure("TNotebook.Tab", padding=(14, 8), font=("Microsoft YaHei UI", 10), background="#edf2f8", foreground="#5d7188", borderwidth=0)
-        style.map("TNotebook.Tab", background=[("selected", "#ffffff"), ("active", "#f2f6fb")], foreground=[("selected", "#2f6fed"), ("active", "#2f6fed")])
+        style.configure("TEntry", padding=(6, 4), fieldbackground=colors["card"], foreground=colors["text"])
+        style.configure("TCombobox", padding=(6, 4), fieldbackground=colors["card"], foreground=colors["text"])
         style.configure("Primary.TButton", font=("Microsoft YaHei UI", 10, "bold"), padding=(11, 6))
         style.configure("Secondary.TButton", padding=(10, 6))
-        style.configure("Mapping.Treeview", rowheight=32, font=("Microsoft YaHei UI", 11), borderwidth=0)
-        style.configure("Mapping.Treeview.Heading", font=("Microsoft YaHei UI", 10, "bold"), background="#f5f8fc", foreground="#2f485f")
+        style.configure("Mapping.Treeview", rowheight=32, font=("Microsoft YaHei UI", 11), borderwidth=0, background=colors["tree_bg"], fieldbackground=colors["tree_bg"], foreground=colors["text"])
+        style.configure("Mapping.Treeview.Heading", font=("Microsoft YaHei UI", 10, "bold"), background=colors["tree_heading"], foreground=colors["field"])
 
     def _build_ui(self) -> None:
-        shell = ttk.Frame(self.root, style="App.TFrame", padding=14)
+        colors = self._palette()
+        shell = ctk.CTkFrame(self.root, fg_color=colors["app_bg"], corner_radius=0)
         shell.pack(fill=tk.BOTH, expand=True)
-        shell.columnconfigure(0, weight=1)
-        shell.rowconfigure(1, weight=1)
+        shell.grid_columnconfigure(1, weight=1)
+        shell.grid_rowconfigure(0, weight=1)
 
-        header = ttk.Frame(shell, style="Header.TFrame", padding=(0, 0, 0, 10))
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
-        header.columnconfigure(0, weight=1)
-        accent = ttk.Frame(header, style="HeaderAccent.TFrame", height=3)
-        accent.grid(row=0, column=0, sticky="ew", pady=(0, 12))
-        title_wrap = ttk.Frame(header, style="Header.TFrame", padding=(4, 0, 0, 0))
-        title_wrap.grid(row=1, column=0, sticky="ew")
-        title_wrap.columnconfigure(0, weight=1)
-        ttk.Label(title_wrap, text=APP_DISPLAY_NAME, style="HeaderTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(title_wrap, text=f"月报转 PPT / 文档脱敏 / 文档还原 / v{APP_VERSION}", style="HeaderSub.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
+        sidebar = ctk.CTkFrame(shell, width=226, corner_radius=0, fg_color=colors["sidebar"])
+        sidebar.grid(row=0, column=0, sticky="ns")
+        sidebar.grid_propagate(False)
+        sidebar.grid_columnconfigure(0, weight=1)
+        sidebar.grid_rowconfigure(9, weight=1)
 
-        notebook = ttk.Notebook(shell)
-        notebook.grid(row=1, column=0, sticky="nsew")
+        ctk.CTkLabel(
+            sidebar,
+            text=APP_DISPLAY_NAME,
+            text_color="#f8fbff",
+            font=("Microsoft YaHei UI", 18, "bold"),
+            anchor="center",
+        ).grid(row=0, column=0, sticky="ew", padx=22, pady=(22, 4))
+        ctk.CTkLabel(
+            sidebar,
+            text=f"v{APP_VERSION}",
+            text_color="#93a4bb",
+            font=("Microsoft YaHei UI", 12),
+            anchor="center",
+        ).grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 18))
 
-        convert_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
-        sanitize_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
-        restore_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
-        prompt_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
-        about_tab = ttk.Frame(notebook, style="App.TFrame", padding=6)
-        notebook.add(convert_tab, text="月报转 PPT")
-        notebook.add(sanitize_tab, text="脱敏")
-        notebook.add(restore_tab, text="还原")
-        notebook.add(prompt_tab, text="AI Prompt")
-        notebook.add(about_tab, text="关于")
+        content_shell = ctk.CTkFrame(shell, fg_color=colors["app_bg"], corner_radius=0)
+        content_shell.grid(row=0, column=1, sticky="nsew")
+        content_shell.grid_columnconfigure(0, weight=1)
+        content_shell.grid_rowconfigure(1, weight=1)
+
+        header = ctk.CTkFrame(content_shell, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=22, pady=(18, 10))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text="文档脱敏与还原工作台",
+            text_color=colors["text"],
+            font=("Microsoft YaHei UI", 20, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(
+            header,
+            text="审核映射、生成提示词、还原文档；月报转 PPT。",
+            text_color=colors["muted"],
+            font=("Microsoft YaHei UI", 11),
+            anchor="w",
+        ).grid(row=1, column=0, sticky="ew", pady=(4, 0))
+
+        page_shell = ctk.CTkFrame(content_shell, fg_color=colors["card"], corner_radius=14)
+        page_shell.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 18))
+        page_shell.grid_columnconfigure(0, weight=1)
+        page_shell.grid_rowconfigure(0, weight=1)
+
+        sanitize_tab = ttk.Frame(page_shell, style="App.TFrame", padding=10)
+        restore_tab = ttk.Frame(page_shell, style="App.TFrame", padding=10)
+        prompt_tab = ttk.Frame(page_shell, style="App.TFrame", padding=10)
+        convert_tab = ttk.Frame(page_shell, style="App.TFrame", padding=10)
+        about_tab = ttk.Frame(page_shell, style="App.TFrame", padding=10)
+        self.nav_pages = {
+            "sanitize": sanitize_tab,
+            "restore": restore_tab,
+            "prompt": prompt_tab,
+            "convert": convert_tab,
+            "about": about_tab,
+        }
+        for page in self.nav_pages.values():
+            page.grid(row=0, column=0, sticky="nsew")
+
+        nav_items = [
+            ("sanitize", "脱敏", "识别、审核和生成脱敏文档"),
+            ("restore", "还原", "用映射文件恢复文档"),
+            ("prompt", "AI Prompt", "生成外部 AI 使用提示"),
+            ("convert", "月报转 PPT", "暂放后续完善"),
+            ("about", "关于", "版本与更新"),
+        ]
+        for row, (key, title, subtitle) in enumerate(nav_items, start=2):
+            self._add_nav_button(sidebar, row, key, title, subtitle)
 
         self._build_convert_tab(convert_tab)
         self._build_sanitize_tab(sanitize_tab)
         self._build_restore_tab(restore_tab)
         self._build_prompt_tab(prompt_tab)
         self._build_about_tab(about_tab)
+        self._show_nav_page("sanitize")
+
+    def _add_nav_button(self, parent: ctk.CTkFrame, row: int, key: str, title: str, subtitle: str) -> None:
+        colors = self._palette()
+        button = ctk.CTkButton(
+            parent,
+            text=f"{title}\n{subtitle}",
+            anchor="center",
+            height=56,
+            corner_radius=10,
+            fg_color="transparent",
+            hover_color=colors["sidebar_hover"],
+            text_color="#d8e2ef",
+            font=("Microsoft YaHei UI", 12),
+            command=lambda selected=key: self._show_nav_page(selected),
+        )
+        button.grid(row=row, column=0, sticky="ew", padx=14, pady=5)
+        self.nav_buttons[key] = button
+
+    def _show_nav_page(self, key: str) -> None:
+        colors = self._palette()
+        for page_key, page in self.nav_pages.items():
+            if page_key == key:
+                page.grid()
+            else:
+                page.grid_remove()
+        for button_key, button in self.nav_buttons.items():
+            if button_key == key:
+                button.configure(fg_color=colors["accent"], text_color="#ffffff")
+            else:
+                button.configure(fg_color="transparent", text_color="#d8e2ef")
+        self.active_nav_key = key
 
     def _create_log_widget(self, parent: ttk.Frame) -> ScrolledText:
         widget = ScrolledText(
@@ -528,7 +637,7 @@ def main() -> int:
             sys.argv = old_argv
 
     configure_windows_dpi()
-    root = tk.Tk()
+    root = ctk.CTk()
     ConverterGUI(root, geometry=geometry)
     root.mainloop()
     return 0

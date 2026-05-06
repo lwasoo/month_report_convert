@@ -68,6 +68,7 @@ Write-Host "[INFO] Building Windows EXE with PyInstaller..."
   --name $PackageName `
   --icon $IconIco `
   --hidden-import rapidocr_onnxruntime `
+  --collect-data customtkinter `
   --collect-all rapidocr_onnxruntime `
   --collect-all onnxruntime `
   --add-data "assets;assets" `

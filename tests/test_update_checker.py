@@ -6,7 +6,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from gui_app.about_tab import AboutTabMixin
 from gui_app.self_update import build_windows_update_script, windows_update_target_path
+from gui_app.update_preferences import (
+    is_auto_update_check_enabled,
+    load_update_preferences,
+    set_auto_update_check_enabled,
+    update_preferences_path,
+)
 from gui_app.update_checker import (
     ReleaseAsset,
     UpdateInfo,
@@ -17,7 +24,101 @@ from gui_app.update_checker import (
 )
 
 
+class _StatusVar:
+    def __init__(self) -> None:
+        self.value = ""
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
+class _Button:
+    def __init__(self) -> None:
+        self.state = ""
+
+    def configure(self, **kwargs) -> None:
+        if "state" in kwargs:
+            self.state = kwargs["state"]
+
+
+class _AboutTabHarness(AboutTabMixin):
+    def __init__(self) -> None:
+        self.update_status_var = _StatusVar()
+        self.check_update_button = _Button()
+        self.download_update_button = _Button()
+        self.download_calls = 0
+
+    def download_latest_update_async(self) -> None:
+        self.download_calls += 1
+
+
 class UpdateCheckerTests(unittest.TestCase):
+    def test_update_preferences_can_disable_startup_auto_check(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            prefs_path = Path(temp_dir) / "update_preferences.json"
+            with patch.dict("os.environ", {"FILE_TOOLBOX_UPDATE_PREFS_PATH": str(prefs_path)}):
+                self.assertEqual(update_preferences_path(), prefs_path)
+                self.assertTrue(is_auto_update_check_enabled())
+
+                set_auto_update_check_enabled(False)
+
+                self.assertFalse(is_auto_update_check_enabled())
+                self.assertTrue(load_update_preferences()["skip_auto_update_check"])
+
+                set_auto_update_check_enabled(True)
+
+                self.assertTrue(is_auto_update_check_enabled())
+                self.assertNotIn("skip_auto_update_check", load_update_preferences())
+
+    def test_silent_update_check_asks_before_downloading(self) -> None:
+        # 自动检测到新版本时也必须先询问用户，避免用户想停留在特定版本时被直接更新。
+        info = UpdateInfo(
+            current_version="1.2.3",
+            latest_version="1.2.4",
+            release_name="v1.2.4",
+            release_url="https://example.test/release",
+            published_at="",
+            assets=[ReleaseAsset("FileToolbox.exe", "https://example.test/app.exe")],
+            is_update_available=True,
+        )
+        harness = _AboutTabHarness()
+
+        with TemporaryDirectory() as temp_dir:
+            prefs_path = Path(temp_dir) / "update_preferences.json"
+            with patch.dict("os.environ", {"FILE_TOOLBOX_UPDATE_PREFS_PATH": str(prefs_path)}):
+                with patch("gui_app.about_tab.messagebox.askyesno", return_value=False) as ask:
+                    harness._handle_update_result(info, silent=True)
+
+                self.assertFalse(is_auto_update_check_enabled())
+
+        ask.assert_called_once()
+        self.assertEqual(harness.download_calls, 0)
+        self.assertEqual(harness.download_update_button.state, "normal")
+        self.assertIn("已跳过", harness.update_status_var.value)
+
+    def test_confirmed_update_check_starts_download(self) -> None:
+        info = UpdateInfo(
+            current_version="1.2.3",
+            latest_version="1.2.4",
+            release_name="v1.2.4",
+            release_url="https://example.test/release",
+            published_at="",
+            assets=[ReleaseAsset("FileToolbox.exe", "https://example.test/app.exe")],
+            is_update_available=True,
+        )
+        harness = _AboutTabHarness()
+
+        with TemporaryDirectory() as temp_dir:
+            prefs_path = Path(temp_dir) / "update_preferences.json"
+            with patch.dict("os.environ", {"FILE_TOOLBOX_UPDATE_PREFS_PATH": str(prefs_path)}):
+                set_auto_update_check_enabled(False)
+                with patch("gui_app.about_tab.messagebox.askyesno", return_value=True):
+                    harness._handle_update_result(info, silent=True)
+
+                self.assertTrue(is_auto_update_check_enabled())
+
+        self.assertEqual(harness.download_calls, 1)
+
     def test_update_asset_selection_and_path_helpers(self) -> None:
         # 通过用例：同一个 Release 里有多个平台产物时，应按当前系统选择下载包。
         assets = [

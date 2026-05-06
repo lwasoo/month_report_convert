@@ -9,12 +9,15 @@ def load_app_version() -> str:
     env_version = os.environ.get("MONTH_REPORT_CONVERTER_VERSION", "").strip()
     if env_version:
         return env_version.removeprefix("v").removeprefix("V")
+    git_version = load_git_version()
+    if git_version:
+        return git_version
     version_file = Path(__file__).with_name("version.txt")
     if version_file.exists():
         version = version_file.read_text(encoding="utf-8").strip()
         if version:
             return version.removeprefix("v").removeprefix("V")
-    return load_git_version() or "0.0.0-dev"
+    return "0.0.0-dev"
 
 
 def load_git_version() -> str:

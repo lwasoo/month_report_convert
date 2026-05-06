@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 from .defaults import APP_DISPLAY_NAME, APP_VERSION, GITHUB_RELEASES_URL
 from .self_update import can_self_update_with_asset, launch_self_updater
 from .update_checker import UpdateInfo, download_release_asset, fetch_latest_release
+from .update_preferences import set_auto_update_check_enabled
 
 
 class AboutTabMixin:
@@ -60,7 +61,7 @@ class AboutTabMixin:
 
         ttk.Label(
             card,
-            text="检测到新版本后会下载对应平台的 Release 安装包。打包后的 Windows exe / macOS app 可在下载后关闭当前程序并自动替换重启，源码运行不启用自动替换。",
+            text="检测到新版本后会先询问是否下载对应平台的 Release 安装包。打包后的 Windows exe / macOS app 可在下载后关闭当前程序并自动替换重启，源码运行不启用自动替换。",
             style="Hint.TLabel",
             wraplength=620,
             justify="left",
@@ -93,15 +94,16 @@ class AboutTabMixin:
             if hasattr(self, "download_update_button"):
                 self.download_update_button.configure(state="normal")
             self.update_status_var.set(f"发现新版本 v{info.latest_version}")
-            if silent:
-                self.download_latest_update_async()
-                return
             should_download = messagebox.askyesno(
                 "发现新版本",
-                f"当前版本: v{info.current_version}\n最新版本: v{info.latest_version}\n\n是否现在下载更新包？",
+                f"当前版本: v{info.current_version}\n最新版本: v{info.latest_version}\n\n是否现在下载更新包？\n选择“否”将继续使用当前版本。",
             )
             if should_download:
+                set_auto_update_check_enabled(True)
                 self.download_latest_update_async()
+            else:
+                set_auto_update_check_enabled(False)
+                self.update_status_var.set(f"已跳过 v{info.latest_version} 更新，可在关于页手动下载")
             return
 
         self.latest_update_info = None
