@@ -1,3 +1,9 @@
+"""Tests for LLM-assisted sensitive entity selection and prompt preparation.
+
+The suite avoids live Ollama calls and focuses on deterministic pre-call filtering, chunking,
+and cache behavior.
+"""
+
 from __future__ import annotations
 
 import unittest
@@ -12,6 +18,8 @@ from doc_sanitizer.llm_assist import (
 
 
 class LlmAssistPerformanceTests(unittest.TestCase):
+    """Guard latency-oriented filtering before model calls are made."""
+
     def test_llm_text_selection_filters_low_signal_texts_and_caps_chunks(self) -> None:
         # 性能回归用例：全文 XML 扫描会带来很多低价值碎片，
         # 这些碎片不应全部送给 Ollama，避免模型调用次数暴涨。

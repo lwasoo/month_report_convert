@@ -1,13 +1,21 @@
+"""Scanning pipeline for building sanitization mapping payloads.
+
+This module collects document text, merges existing mappings, adds manual terms, runs
+rule-based extraction, and optionally asks the LLM helper for additional candidates.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
 from report_converter.common import log, normalize_text
-from .document_io import collect_texts_for_path, default_sanitized_path, ensure_supported_path
+
+from .file_types import default_sanitized_path, ensure_supported_path
 from .llm_assist import collect_llm_candidates
-from .mapping import merge_entries, normalize_entries, read_mapping, refresh_payload_metadata
+from .mapping import MappingLike, MappingPayload, coerce_mapping_payload, merge_entries, normalize_entries, read_mapping
 from .patterns import extract_contextual_candidates, match_candidates_in_text
+from .text_collection import collect_texts_for_path
 
 
 def build_mapping_payload(
@@ -22,14 +30,14 @@ def build_mapping_payload(
     timeout_sec: int,
     retries: int,
     existing_entries_override: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+) -> MappingPayload:
     existing_entries: list[dict[str, Any]] = []
     if existing_entries_override is not None:
         existing_entries = normalize_entries(existing_entries_override)
         log(f"已加载当前内存映射: {len(existing_entries)} 条")
     elif mapping_path.exists():
         try:
-            existing_entries = read_mapping(mapping_path).get("entries", [])
+            existing_entries = read_mapping(mapping_path).entries or []
             log(f"已加载现有映射: {len(existing_entries)} 条")
         except Exception as exc:
             log(f"读取现有映射失败，将重新生成: {exc}", level="WARN")
@@ -37,7 +45,7 @@ def build_mapping_payload(
     candidates = collect_candidates(texts, custom_terms)
     if use_llm_assist:
         try:
-            existing_terms = {normalize_text(str(entry.get("original", ""))) for entry in existing_entries if isinstance(entry, dict)}
+            existing_terms = {normalize_text(str(entry.get("original", ""))) for entry in existing_entries}
             llm_candidates = collect_llm_candidates(
                 texts,
                 model=model,
@@ -52,15 +60,13 @@ def build_mapping_payload(
                 candidates.extend(llm_candidates)
         except Exception as exc:
             log(f"AI 辅助识别失败，已回退规则模式: {exc}", level="WARN")
-    merged = merge_entries(existing_entries, candidates)
-    payload = {
-        "version": 2,
-        "source_file": str(input_path),
-        "sanitized_file": str(output_path),
-        "entries": merged,
-    }
-    refresh_payload_metadata(payload)
-    log(f"识别到敏感项: {len(payload['entries'])} 条，启用 {len(payload['replacements'])} 条")
+
+    payload = MappingPayload(
+        source_file=str(input_path),
+        sanitized_file=str(output_path),
+        entries=merge_entries(existing_entries, candidates),
+    )
+    log(f"识别到敏感项: {len(payload.entries or [])} 条，启用 {len(payload.replacements)} 条")
     return payload
 
 
@@ -89,12 +95,13 @@ def scan_file_payload(
     timeout_sec: int = 120,
     retries: int = 2,
     existing_mapping_path: Path | None = None,
-    existing_payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    existing_payload: MappingLike | None = None,
+) -> MappingPayload:
     ensure_supported_path(input_path)
     output_path = default_sanitized_path(input_path)
     mapping_path = existing_mapping_path or input_path.with_name(f"{input_path.stem}_映射.json")
     texts = collect_texts_for_path(input_path)
+    existing_entries = coerce_mapping_payload(existing_payload).entries if existing_payload else None
     payload = build_mapping_payload(
         texts=texts,
         input_path=input_path,
@@ -106,8 +113,8 @@ def scan_file_payload(
         ollama_url=ollama_url,
         timeout_sec=timeout_sec,
         retries=retries,
-        existing_entries_override=existing_payload.get("entries", []) if existing_payload else None,
+        existing_entries_override=existing_entries,
     )
     if existing_payload:
-        payload["source_file"] = str(input_path)
+        payload.source_file = str(input_path)
     return payload

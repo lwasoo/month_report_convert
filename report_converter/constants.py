@@ -1,3 +1,5 @@
+"""Static labels and heading hints used by the report converter."""
+
 LEGAL_TABLE_LABELS = [
     "一般文件用印",
     "法律文件用印",

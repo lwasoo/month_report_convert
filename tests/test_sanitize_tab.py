@@ -1,3 +1,5 @@
+"""Tests for sanitize tab state transitions without launching the full GUI."""
+
 from __future__ import annotations
 
 import json
@@ -7,10 +9,13 @@ import tkinter as tk
 from pathlib import Path
 from unittest.mock import patch
 
+from doc_sanitizer.mapping import MappingPayload
 from gui_app.sanitize_tab import SanitizeTabMixin
 
 
 class SanitizeTabNumberingTests(unittest.TestCase):
+    """Exercise mapping editor behavior through a lightweight tab harness."""
+
     def test_existing_manual_number_moves_entry_to_category_tail(self) -> None:
         tab = object.__new__(SanitizeTabMixin)
         entries = [
@@ -31,7 +36,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         rows: list[tuple[str, str]] = []
         tab.log_queue = type("FakeQueue", (), {"put": lambda _self, item: rows.append(item)})()
 
-        with patch("gui_app.sanitize_tab.messagebox.askyesno", return_value=True):
+        with patch("gui_app.sanitize_table.messagebox.askyesno", return_value=True):
             allowed = tab._confirm_edit_after_apply()
 
         self.assertTrue(allowed)
@@ -173,7 +178,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         tab._refresh_mapping_tree = lambda: None
         tab._update_sanitize_action_states = lambda: None
 
-        with patch("gui_app.sanitize_tab.messagebox.askyesnocancel", return_value=True):
+        with patch("gui_app.sanitize_layout.messagebox.askyesnocancel", return_value=True):
             should_continue = tab._confirm_source_change_or_clear(r"C:\new.docx")
 
         self.assertFalse(should_continue)
@@ -195,7 +200,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         rows: list[tuple[str, str]] = []
         tab.log_queue = type("FakeQueue", (), {"put": lambda _self, item: rows.append(item)})()
 
-        with patch("gui_app.sanitize_tab.messagebox.askyesnocancel", return_value=False):
+        with patch("gui_app.sanitize_layout.messagebox.askyesnocancel", return_value=False):
             should_continue = tab._confirm_source_change_or_clear(r"C:\new.docx")
 
         self.assertTrue(should_continue)
@@ -226,11 +231,63 @@ class SanitizeTabNumberingTests(unittest.TestCase):
             }
             mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-            with patch("gui_app.sanitize_tab.filedialog.askopenfilename", return_value=str(mapping_path)):
+            with patch("gui_app.sanitize_actions.filedialog.askopenfilename", return_value=str(mapping_path)):
                 tab.load_mapping_json()
 
         self.assertTrue(tab.mapping_applied)
         self.assertEqual(tab.sanitize_output_var.get(), r"C:\source_脱敏.docx")
+
+    def test_apply_mapping_worker_accepts_mapping_payload_dataclass(self) -> None:
+        tab = object.__new__(SanitizeTabMixin)
+        completed: list[tuple[Path, Path]] = []
+        tab.root = type("FakeRoot", (), {"after": lambda _self, _delay, callback: callback()})()
+        tab._after_apply_complete = lambda output_path, mapping_path: completed.append((output_path, mapping_path))
+        payload = MappingPayload(
+            entries=[
+                {"placeholder": "__COMPANY_001__", "original": "Acme", "category": "COMPANY", "enabled": True}
+            ]
+        )
+        params = {
+            "input_path": Path("input.docx"),
+            "output_path": Path("output.docx"),
+            "mapping_path": Path("mapping.json"),
+            "payload": payload,
+        }
+
+        with patch("gui_app.sanitize.actions.apply_mapping_to_file") as apply_mock:
+            tab._apply_mapping_worker(params)
+
+        self.assertEqual(payload.sanitized_file, "output.docx")
+        apply_mock.assert_called_once()
+        self.assertEqual(completed, [(Path("output.docx"), Path("mapping.json"))])
+
+    def test_scan_mapping_worker_passes_mapping_payload_dataclass(self) -> None:
+        tab = object.__new__(SanitizeTabMixin)
+        completed: list[MappingPayload] = []
+        existing = MappingPayload(
+            entries=[
+                {"placeholder": "__COMPANY_001__", "original": "Acme", "category": "COMPANY", "enabled": True}
+            ]
+        )
+        result = MappingPayload(entries=existing.entries)
+        tab.root = type("FakeRoot", (), {"after": lambda _self, _delay, callback: callback()})()
+        tab._after_scan_complete = lambda payload: completed.append(payload)
+        params = {
+            "input_path": Path("input.docx"),
+            "mapping_path": Path("mapping.json"),
+            "use_llm_assist": False,
+            "model": "model",
+            "ollama_url": "http://127.0.0.1:11434",
+            "timeout_sec": 120,
+            "retries": 2,
+            "existing_payload": existing,
+        }
+
+        with patch("gui_app.sanitize.actions.scan_file", return_value=result) as scan_mock:
+            tab._scan_mapping_worker(params)
+
+        self.assertIs(scan_mock.call_args.kwargs["existing_payload"], existing)
+        self.assertEqual(completed, [result])
 
 
 if __name__ == "__main__":

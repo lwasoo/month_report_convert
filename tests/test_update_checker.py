@@ -1,3 +1,5 @@
+"""Tests for update checking, download selection, and self-update scripts."""
+
 from __future__ import annotations
 
 import sys
@@ -53,6 +55,8 @@ class _AboutTabHarness(AboutTabMixin):
 
 
 class UpdateCheckerTests(unittest.TestCase):
+    """Validate update behavior without making network requests or replacing executables."""
+
     def test_update_preferences_can_disable_startup_auto_check(self) -> None:
         with TemporaryDirectory() as temp_dir:
             prefs_path = Path(temp_dir) / "update_preferences.json"

@@ -1,3 +1,9 @@
+"""Regression tests for Office document sanitize/restore I/O.
+
+These tests exercise real DOCX/PPTX round trips because run-level text replacement and OOXML
+package patching can diverge if only pure string helpers are tested.
+"""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +19,8 @@ from doc_sanitizer.mapping import read_mapping
 
 
 class DocumentRoundTripTests(unittest.TestCase):
+    """Validate document-level behavior at the public file I/O boundary."""
+
     def test_docx_sanitize_and_restore_with_confirmed_placeholder_repairs(self) -> None:
         # 通过用例：覆盖最核心的 docx 链路：
         # 原文 -> 脱敏文档/映射 JSON -> 外部 AI 改坏占位符 -> 按确认结果还原。

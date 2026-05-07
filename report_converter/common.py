@@ -1,3 +1,9 @@
+"""Shared utility functions for report conversion.
+
+These helpers cover logging, text normalization, title classification, and slide capacity
+rules used across parsing, drafting, and layout.
+"""
+
 from __future__ import annotations
 
 import datetime as dt

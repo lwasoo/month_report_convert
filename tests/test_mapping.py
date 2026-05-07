@@ -1,3 +1,5 @@
+"""Tests for sanitization mapping numbering and metadata normalization."""
+
 from __future__ import annotations
 
 import unittest
@@ -6,6 +8,8 @@ from doc_sanitizer.mapping import compact_entry_placeholders, refresh_payload_me
 
 
 class MappingNumberingTests(unittest.TestCase):
+    """Protect placeholder compaction semantics used by scan and review flows."""
+
     def test_compact_placeholders_fills_deleted_index_gap(self) -> None:
         entries = [
             {"placeholder": "__COMPANY_001__", "original": "A", "category": "COMPANY", "enabled": True},

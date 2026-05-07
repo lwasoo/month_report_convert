@@ -1,3 +1,9 @@
+"""Word document parsing and optional image OCR enrichment.
+
+This module extracts headings, paragraph text, embedded-image OCR summaries, and month labels
+from the source report before drafting begins.
+"""
+
 from __future__ import annotations
 
 import io
@@ -8,16 +14,17 @@ from typing import Any
 from docx import Document
 
 from .common import is_heading_candidate, log, normalize_text
+from .models import ParsedReport, ReportParagraph, ReportSection
 
 _OCR_ENGINE: Any | None = None
 _OCR_READY = False
 
 
-def extract_doc_payload(docx_path: Path) -> dict[str, Any]:
+def extract_doc_payload(docx_path: Path) -> ParsedReport:
     log(f"读取 Word: {docx_path}")
     doc = Document(str(docx_path))
 
-    paragraphs: list[dict[str, Any]] = []
+    paragraphs: list[ReportParagraph] = []
     for p in doc.paragraphs:
         text = normalize_text(p.text)
         blips = p._p.xpath('.//*[local-name()="blip"]')
@@ -36,40 +43,39 @@ def extract_doc_payload(docx_path: Path) -> dict[str, Any]:
         if not text and not has_drawing:
             continue
         style = p.style.name if p.style else ""
-        paragraphs.append({"text": text, "style": style, "has_drawing": has_drawing, "image_blobs": image_blobs})
+        paragraphs.append(ReportParagraph(text=text, style=style, has_drawing=has_drawing, image_blobs=image_blobs))
 
     if not paragraphs:
         raise ValueError("DOCX 中没有可用文本。")
 
-    title = paragraphs[0]["text"]
-    sections: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
+    title = paragraphs[0].text
+    sections: list[ReportSection] = []
+    current: ReportSection | None = None
     for row in paragraphs:
-        text = row["text"]
-        style = row["style"]
-        has_drawing = bool(row.get("has_drawing"))
-        image_blobs = row.get("image_blobs", [])
+        text = row.text
+        style = row.style
+        has_drawing = row.has_drawing
+        image_blobs = row.image_blobs
         if text and is_heading_candidate(text, style):
-            current = {"heading": text, "items": []}
+            current = ReportSection(heading=text)
             sections.append(current)
         elif text:
             if current is None:
-                current = {"heading": title, "items": []}
+                current = ReportSection(heading=title)
                 sections.append(current)
-            current["items"].append(text)
+            current.items.append(text)
         if has_drawing:
             if current is None:
-                current = {"heading": title, "items": []}
+                current = ReportSection(heading=title)
                 sections.append(current)
-            current["image_count"] = int(current.get("image_count", 0)) + 1
-            imgs = current.setdefault("images", [])
-            imgs.extend(image_blobs)
+            current.image_count += 1
+            current.images.extend(image_blobs)
 
     enrich_sections_with_ocr(sections)
 
-    img_total = sum(int(sec.get("image_count", 0)) for sec in sections)
+    img_total = sum(sec.image_count for sec in sections)
     log(f"Word 解析完成: {len(paragraphs)} 段, {len(sections)} 个章节, 图片段落 {img_total} 处")
-    return {"title": title, "paragraphs": paragraphs, "sections": sections}
+    return ParsedReport(title=title, paragraphs=paragraphs, sections=sections)
 
 
 def _get_ocr_engine() -> Any | None:
@@ -113,9 +119,9 @@ def extract_text_from_image_bytes(image_blob: bytes) -> str:
         return ""
 
 
-def enrich_sections_with_ocr(sections: list[dict[str, Any]]) -> None:
+def enrich_sections_with_ocr(sections: list[ReportSection]) -> None:
     for sec in sections:
-        images = sec.get("images", []) or []
+        images = sec.images
         ocr_blocks: list[str] = []
         for image_blob in images:
             text = extract_text_from_image_bytes(image_blob)
@@ -124,11 +130,10 @@ def enrich_sections_with_ocr(sections: list[dict[str, Any]]) -> None:
         if not ocr_blocks:
             continue
         ocr_text = "\n".join(ocr_blocks)
-        sec["ocr_text"] = ocr_text
-        sec.setdefault("items", [])
-        for item in summarize_ocr_text(ocr_text, normalize_text(str(sec.get("heading", "")))):
-            if item and item not in sec["items"]:
-                sec["items"].append(item)
+        sec.ocr_text = ocr_text
+        for item in summarize_ocr_text(ocr_text, normalize_text(sec.heading)):
+            if item and item not in sec.items:
+                sec.items.append(item)
         log(f"OCR 已提取章节图片文本: {short_preview(ocr_text)}")
 
 

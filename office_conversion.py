@@ -1,3 +1,9 @@
+"""LibreOffice-backed conversion helpers for legacy Office formats.
+
+The sanitizer and report converter work on OOXML files internally. This module isolates
+the .doc/.ppt conversion boundary and raises user-facing errors when LibreOffice is missing.
+"""
+
 from __future__ import annotations
 
 import shutil

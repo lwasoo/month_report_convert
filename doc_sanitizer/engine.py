@@ -1,13 +1,19 @@
+"""Public orchestration API for document sanitization and restore.
+
+New code should prefer the object-oriented ``DocumentSanitizer`` service. The functions in
+this module remain as stable wrappers for older CLI, GUI, and test imports.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from report_converter.common import log
-from .document_io import apply_mapping_to_docx, apply_mapping_to_file, ensure_supported_path, restore_docx, restore_file
-from .scanning import scan_file_payload
+from .document_io import apply_mapping_to_docx, apply_mapping_to_file, restore_docx, restore_file
+from .mapping import MappingLike, MappingPayload
+from .services import DocumentSanitizer
 
 __all__ = [
+    "DocumentSanitizer",
     "apply_mapping_to_file",
     "apply_mapping_to_docx",
     "restore_file",
@@ -17,6 +23,22 @@ __all__ = [
     "scan_file",
     "scan_docx",
 ]
+
+
+def sanitizer_for(
+    model: str = "qwen2.5:7b-instruct-q4_K_M",
+    ollama_url: str = "http://127.0.0.1:11434",
+    timeout_sec: int = 120,
+    retries: int = 2,
+    use_llm_assist: bool = True,
+) -> DocumentSanitizer:
+    return DocumentSanitizer(
+        model=model,
+        ollama_url=ollama_url,
+        timeout_sec=timeout_sec,
+        retries=retries,
+        use_llm_assist=use_llm_assist,
+    )
 
 
 def sanitize_file(
@@ -29,22 +51,13 @@ def sanitize_file(
     ollama_url: str = "http://127.0.0.1:11434",
     timeout_sec: int = 120,
     retries: int = 2,
-) -> dict[str, Any]:
-    ensure_supported_path(input_path)
-    payload = scan_file(
+) -> MappingPayload:
+    return sanitizer_for(model, ollama_url, timeout_sec, retries, use_llm_assist).sanitize(
         input_path=input_path,
-        custom_terms=custom_terms or [],
-        use_llm_assist=use_llm_assist,
-        model=model,
-        ollama_url=ollama_url,
-        timeout_sec=timeout_sec,
-        retries=retries,
-        existing_mapping_path=mapping_path if mapping_path.exists() else None,
+        output_path=output_path,
+        mapping_path=mapping_path,
+        custom_terms=custom_terms,
     )
-    apply_mapping_to_file(input_path, output_path, payload, mapping_path)
-    log(f"脱敏完成: {output_path}")
-    log(f"映射文件已输出: {mapping_path}")
-    return payload
 
 
 def scan_file(
@@ -56,17 +69,11 @@ def scan_file(
     timeout_sec: int = 120,
     retries: int = 2,
     existing_mapping_path: Path | None = None,
-    existing_payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    ensure_supported_path(input_path)
-    return scan_file_payload(
+    existing_payload: MappingLike | None = None,
+) -> MappingPayload:
+    return sanitizer_for(model, ollama_url, timeout_sec, retries, use_llm_assist).scan(
         input_path=input_path,
         custom_terms=custom_terms,
-        use_llm_assist=use_llm_assist,
-        model=model,
-        ollama_url=ollama_url,
-        timeout_sec=timeout_sec,
-        retries=retries,
         existing_mapping_path=existing_mapping_path,
         existing_payload=existing_payload,
     )
@@ -82,7 +89,7 @@ def sanitize_docx(
     ollama_url: str = "http://127.0.0.1:11434",
     timeout_sec: int = 120,
     retries: int = 2,
-) -> dict[str, Any]:
+) -> MappingPayload:
     return sanitize_file(
         input_path=input_path,
         output_path=output_path,
@@ -105,8 +112,8 @@ def scan_docx(
     timeout_sec: int = 120,
     retries: int = 2,
     existing_mapping_path: Path | None = None,
-    existing_payload: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    existing_payload: MappingLike | None = None,
+) -> MappingPayload:
     return scan_file(
         input_path=input_path,
         custom_terms=custom_terms,

@@ -1,3 +1,9 @@
+"""Ollama-assisted sensitive entity discovery.
+
+This module filters document text before model calls, builds strict JSON prompts, parses
+model responses, and returns validated candidate entities for mapping merge.
+"""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +16,7 @@ import urllib.request
 from report_converter.common import log, normalize_text
 from .patterns import clean_candidate_value, extract_contextual_candidates, is_valid_candidate, match_candidates_in_text
 
+
 def collect_llm_candidates(
     texts: list[str],
     model: str,
@@ -19,6 +26,7 @@ def collect_llm_candidates(
     rule_candidates: list[tuple[str, str, str]] | None = None,
     existing_terms: set[str] | None = None,
 ) -> list[tuple[str, str, str]]:
+    """Collect model-suggested sensitive entities after filtering low-signal and known text."""
     existing_terms = {normalize_text(term) for term in (existing_terms or set()) if normalize_text(term)}
     selected_texts = select_texts_for_llm(texts, max_texts=96, existing_terms=existing_terms)
     excluded_existing = count_texts_with_existing_terms(texts, existing_terms)
@@ -59,6 +67,7 @@ LLM_RESPONSE_CACHE: dict[str, dict[str, Any]] = {}
 
 
 def stable_text_hash(text: str) -> str:
+    """Hash normalized text so semantically identical snippets share cache entries."""
     return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
 
 
@@ -86,6 +95,7 @@ def build_llm_candidate_contexts(
     existing_terms: set[str],
     max_contexts: int = 80,
 ) -> list[str]:
+    """Build compact rule-candidate contexts for a verification-style model prompt."""
     terms = [
         (category, normalize_text(value))
         for category, value, _source in rule_candidates
@@ -113,6 +123,7 @@ def build_llm_candidate_contexts(
 
 
 def select_texts_for_llm(texts: list[str], max_texts: int = 72, existing_terms: set[str] | None = None) -> list[str]:
+    """Select high-signal snippets and skip text already covered by the current mapping."""
     existing_terms = existing_terms or set()
     scored: list[tuple[int, int, str]] = []
     seen: set[str] = set()
@@ -132,6 +143,7 @@ def select_texts_for_llm(texts: list[str], max_texts: int = 72, existing_terms: 
 
 
 def llm_text_score(text: str) -> int:
+    """Rank snippets by cheap local signals before paying for model calls."""
     score = 0
     if match_candidates_in_text(text) or extract_contextual_candidates(text):
         score += 5
@@ -162,6 +174,7 @@ def llm_text_score(text: str) -> int:
 
 
 def chunk_texts_for_llm(texts: list[str], max_chars: int = 1800, max_items: int = 16, max_chunks: int = 12) -> list[list[str]]:
+    """Pack snippets into bounded prompts to keep Ollama latency and context drift controlled."""
     chunks: list[list[str]] = []
     current: list[str] = []
     current_len = 0
@@ -180,7 +193,9 @@ def chunk_texts_for_llm(texts: list[str], max_chars: int = 1800, max_items: int 
         chunks.append(current)
     return chunks[:max_chunks]
 
+
 def build_llm_candidate_prompt(chunk: list[str], candidate_mode: bool = False) -> str:
+    """Build the extraction prompt; example JSON is intentionally separated from input text."""
     numbered = "\n".join(f"{idx + 1}. {line}" for idx, line in enumerate(chunk))
     if candidate_mode:
         return f"""请审核下面的“候选 + 上下文”，判断哪些候选确实需要脱敏，并可补充同一上下文中明显遗漏的短实体。输出严格 JSON。
@@ -205,7 +220,7 @@ def build_llm_candidate_prompt(chunk: list[str], candidate_mode: bool = False) -
 3. 只返回短实体，不要返回整句描述。
 4. 如果不确定，不要返回。
 5. category 只能是：COMPANY、PERSON、PROJECT、CASE、CODE、CUSTOMER、SUPPLIER、TITLE。
-6. 像 Baker Botts、TransPerfect Legal、贝克博茨律所 这类律所或英文机构，也按 COMPANY 返回。
+6. 律所、legal 或英文机构名称，也按 COMPANY 返回。
 7. 不要把通用法律或合同术语当作敏感实体，例如 Effective Date、Commitment Period、State of Delaware、Memorandum of Understanding。
 8. 纯数字、常见法务短语、州名/地名如果没有明确敏感含义，不要返回。
 
@@ -220,7 +235,9 @@ def build_llm_candidate_prompt(chunk: list[str], candidate_mode: bool = False) -
 {numbered}
 """
 
+
 def extract_json_object(text: str) -> str:
+    """Extract the first JSON object from model output that may include wrapper text."""
     payload = text.strip()
     if payload.startswith("{") and payload.endswith("}"):
         return payload
@@ -236,6 +253,7 @@ def call_ollama_candidate_json(
     timeout_sec: int,
     retries: int,
 ) -> dict[str, Any]:
+    """Call Ollama using chat first and generate as a fallback, always requesting JSON."""
     system_prompt = "你是企业文档脱敏助手。只能输出严格 JSON，只抽取明确敏感实体，禁止返回整句。"
     endpoints = [
         ("chat", f"{ollama_url.rstrip('/')}/api/chat"),
@@ -279,4 +297,3 @@ def call_ollama_candidate_json(
     if last_error is None:
         raise RuntimeError("Ollama 脱敏辅助失败。")
     raise RuntimeError(f"Ollama 脱敏辅助失败: {last_error}") from last_error
-

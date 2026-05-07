@@ -1,3 +1,9 @@
+"""Platform-specific self-update launch helpers.
+
+The GUI downloads release assets, then this module starts a detached updater script that can
+replace the running executable after the current process exits.
+"""
+
 from __future__ import annotations
 
 import os

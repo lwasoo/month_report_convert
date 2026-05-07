@@ -1,3 +1,5 @@
+"""Persistent user preferences for update checks."""
+
 from __future__ import annotations
 
 import json

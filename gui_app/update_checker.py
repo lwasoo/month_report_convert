@@ -1,3 +1,5 @@
+"""GitHub release check and asset download helpers."""
+
 from __future__ import annotations
 
 import json

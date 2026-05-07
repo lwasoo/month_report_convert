@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .engine import (
+    DocumentSanitizer,
     apply_mapping_to_docx,
     apply_mapping_to_file,
     restore_docx,
@@ -15,6 +16,7 @@ from .mapping import read_mapping
 __all__ = [
     "apply_mapping_to_docx",
     "apply_mapping_to_file",
+    "DocumentSanitizer",
     "read_mapping",
     "restore_file",
     "restore_docx",

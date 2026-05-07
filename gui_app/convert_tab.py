@@ -1,3 +1,5 @@
+"""GUI tab for monthly report Word-to-PPT conversion."""
+
 from __future__ import annotations
 
 import sys

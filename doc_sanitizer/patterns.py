@@ -1,3 +1,9 @@
+"""Rule-based sensitive entity candidate extraction.
+
+The regular expressions here provide a fast local first pass before optional LLM review.
+Keep these patterns conservative because false positives become editable mapping entries.
+"""
+
 from __future__ import annotations
 
 import re

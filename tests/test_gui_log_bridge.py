@@ -1,3 +1,5 @@
+"""Tests for routing shared converter logs into GUI runtime queues."""
+
 from __future__ import annotations
 
 import unittest
@@ -6,6 +8,8 @@ from report_converter.common import log, route_logs_to
 
 
 class GuiLogBridgeTests(unittest.TestCase):
+    """Cover the bridge between package-level logging and GUI log widgets."""
+
     def test_common_log_can_be_routed_to_gui_queue(self) -> None:
         # GUI 日志桥接用例：底层 log 仍然打印终端，同时可转发到 GUI 运行日志。
         rows: list[tuple[str, str, str]] = []

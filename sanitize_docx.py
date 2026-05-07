@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""CLI entrypoint for Word/PPT sanitization and restore."""
+"""Command-line entrypoint for document sanitization and restore.
+
+The CLI is a thin wrapper around doc_sanitizer APIs. It handles arguments, optional
+custom term loading, and output path defaults, but does not own scanning/replacement logic.
+"""
 
 from __future__ import annotations
 

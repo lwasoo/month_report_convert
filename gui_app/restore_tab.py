@@ -1,3 +1,5 @@
+"""GUI tab for restoring sanitized documents from reviewed mappings."""
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -6,7 +8,13 @@ from tkinter import filedialog, messagebox, ttk
 
 from doc_sanitizer import read_mapping, restore_file
 from doc_sanitizer.document_io import collect_texts_for_path
-from doc_sanitizer.fuzzy_mapping import PlaceholderRepair, closest_placeholder_for_token, placeholder_token_category, suggest_placeholder_repairs, unresolved_placeholder_tokens
+from doc_sanitizer.placeholder_repair import (
+    PlaceholderRepair,
+    closest_placeholder_for_token,
+    placeholder_token_category,
+    suggest_placeholder_repairs,
+    unresolved_placeholder_tokens,
+)
 from doc_sanitizer.mapping import mapping_entries
 
 

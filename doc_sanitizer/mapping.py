@@ -1,10 +1,17 @@
+"""Mapping file schema helpers for sanitized documents.
+
+The mapping payload is the contract between scan, review, sanitize, prompt generation, and
+restore. This module keeps entry normalization, placeholder numbering, and JSON persistence
+in one place.
+"""
+
 from __future__ import annotations
 
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from report_converter.common import normalize_text
 
@@ -16,7 +23,85 @@ class ReplacementItem:
     enabled: bool = True
     source: str = "auto"
 
-def read_mapping(mapping_path: Path) -> dict[str, Any]:
+
+@dataclass
+class MappingPayload:
+    """Typed mapping payload used across scan, sanitize, prompt, and restore steps.
+
+    It exposes a small dict-like compatibility surface so older GUI/tests can continue using
+    ``payload["entries"]`` while new code can rely on named fields.
+    """
+
+    version: int = 2
+    source_file: str = ""
+    sanitized_file: str = ""
+    entries: list[dict[str, Any]] | None = None
+
+    def __post_init__(self) -> None:
+        self.entries = normalize_entries(self.entries or [])
+
+    @property
+    def enabled_entries(self) -> list[dict[str, Any]]:
+        return [entry for entry in self.entries or [] if entry["enabled"]]
+
+    @property
+    def counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for entry in self.enabled_entries:
+            counts[entry["category"]] = counts.get(entry["category"], 0) + 1
+        return counts
+
+    @property
+    def replacements(self) -> dict[str, str]:
+        return {entry["placeholder"]: entry["original"] for entry in self.enabled_entries}
+
+    @property
+    def categories(self) -> dict[str, str]:
+        return {entry["placeholder"]: entry["category"] for entry in self.enabled_entries}
+
+    def refresh(self) -> None:
+        self.entries = normalize_entries(self.entries or [])
+
+    def to_dict(self) -> dict[str, Any]:
+        self.refresh()
+        return {
+            "version": self.version,
+            "source_file": self.source_file,
+            "sanitized_file": self.sanitized_file,
+            "entries": self.entries,
+            "counts": self.counts,
+            "replacements": self.replacements,
+            "categories": self.categories,
+        }
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return self.to_dict()[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key == "version":
+            self.version = int(value)
+        elif key == "source_file":
+            self.source_file = str(value)
+        elif key == "sanitized_file":
+            self.sanitized_file = str(value)
+        elif key == "entries":
+            self.entries = normalize_entries(value)
+        elif key in {"counts", "replacements", "categories"}:
+            return
+        else:
+            raise KeyError(key)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.to_dict())
+
+
+MappingLike = MappingPayload | dict[str, Any]
+
+
+def read_mapping(mapping_path: Path) -> MappingPayload:
     data = json.loads(mapping_path.read_text(encoding="utf-8"))
     if "entries" in data:
         entries = data["entries"]
@@ -33,21 +118,21 @@ def read_mapping(mapping_path: Path) -> dict[str, Any]:
             }
             for placeholder, original in replacements.items()
         ]
-    payload = {
-        "version": 2,
-        "source_file": data.get("source_file", ""),
-        "sanitized_file": data.get("sanitized_file", ""),
-        "entries": normalize_entries(entries),
-    }
-    refresh_payload_metadata(payload)
-    return payload
+    return MappingPayload(
+        version=int(data.get("version", 2) or 2),
+        source_file=str(data.get("source_file", "")),
+        sanitized_file=str(data.get("sanitized_file", "")),
+        entries=entries,
+    )
 
-def write_mapping_data(mapping_path: Path, payload: dict[str, Any]) -> None:
-    refresh_payload_metadata(payload)
-    mapping_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-def mapping_entries(payload: dict[str, Any], only_enabled: bool = True) -> list[ReplacementItem]:
-    entries = normalize_entries(payload.get("entries", []))
+def write_mapping_data(mapping_path: Path, payload: MappingLike) -> None:
+    normalized = coerce_mapping_payload(payload)
+    mapping_path.write_text(json.dumps(normalized.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def mapping_entries(payload: MappingLike, only_enabled: bool = True) -> list[ReplacementItem]:
+    entries = coerce_mapping_payload(payload).entries or []
     items: list[ReplacementItem] = []
     for entry in entries:
         if only_enabled and not entry["enabled"]:
@@ -89,7 +174,22 @@ def normalize_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
     return out
 
-def refresh_payload_metadata(payload: dict[str, Any]) -> None:
+def coerce_mapping_payload(payload: MappingLike) -> MappingPayload:
+    if isinstance(payload, MappingPayload):
+        payload.refresh()
+        return payload
+    return MappingPayload(
+        version=int(payload.get("version", 2) or 2),
+        source_file=str(payload.get("source_file", "")),
+        sanitized_file=str(payload.get("sanitized_file", "")),
+        entries=payload.get("entries", []),
+    )
+
+
+def refresh_payload_metadata(payload: MappingLike) -> None:
+    if isinstance(payload, MappingPayload):
+        payload.refresh()
+        return
     entries = normalize_entries(payload.get("entries", []))
     payload["entries"] = entries
     enabled_entries = [entry for entry in entries if entry["enabled"]]

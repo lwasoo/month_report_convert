@@ -1,3 +1,9 @@
+"""Regression tests for fuzzy mapping, prompt, and placeholder repair behavior.
+
+The implementation is split across narrower modules, but these tests intentionally keep using
+the compatibility facade to protect older GUI and CLI imports.
+"""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +22,8 @@ from doc_sanitizer.mapping import mapping_entries
 
 
 class MappingAndPromptTests(unittest.TestCase):
+    """Protect AI-facing prompt safety and placeholder repair scoring rules."""
+
     def test_prompt_copy_section_excludes_sensitive_originals(self) -> None:
         # 通过用例：外部 AI 可复制区只能包含占位符，不能泄露原始敏感词。
         # 内部审核区可以保留原始名称线索，供用户自己判断归组是否合理。
@@ -45,7 +53,7 @@ class MappingAndPromptTests(unittest.TestCase):
 
         self.assertIn("__COMPANY_002__ / __COMPANY_001__", prompt)
         self.assertIn("不得新增", prompt)
-        self.assertIn("PROJECT_015", prompt)
+        self.assertNotIn("PROJECT_015", prompt)
         self.assertNotIn("Acme", prompt)
         self.assertNotIn("映射摘要", prompt)
         self.assertNotIn("人工确认", prompt)

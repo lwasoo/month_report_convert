@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""CLI entrypoint for Word -> PPT conversion."""
+"""Command-line entrypoint for monthly report Word-to-PPT conversion.
+
+This module only parses CLI options and delegates conversion work to report_converter.
+Keep business logic inside the package so the GUI and CLI share the same behavior.
+"""
 
 from __future__ import annotations
 

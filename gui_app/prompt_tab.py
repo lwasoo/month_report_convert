@@ -1,3 +1,5 @@
+"""GUI tab for generating external AI prompt text from a mapping file."""
+
 from __future__ import annotations
 
 import json
@@ -6,7 +8,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from doc_sanitizer.fuzzy_mapping import build_external_ai_prompt_sections, payload_from_json_text
+from doc_sanitizer.mapping import coerce_mapping_payload
+from doc_sanitizer.prompt_builder import build_external_ai_prompt_sections, payload_from_json_text
 
 
 class PromptTabMixin:
@@ -123,7 +126,7 @@ class PromptTabMixin:
         if not getattr(self, "current_mapping_data", None):
             messagebox.showwarning("没有当前映射", "请先在脱敏页识别或载入映射 JSON。")
             return
-        raw = json.dumps(self.current_mapping_data, ensure_ascii=False, indent=2)
+        raw = json.dumps(coerce_mapping_payload(self.current_mapping_data).to_dict(), ensure_ascii=False, indent=2)
         self.prompt_json_text.delete("1.0", tk.END)
         self.prompt_json_text.insert("1.0", raw)
         self.prompt_status_var.set("已使用当前脱敏映射")
