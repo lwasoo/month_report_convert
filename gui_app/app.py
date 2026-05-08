@@ -18,15 +18,17 @@ from tkinter import ttk
 
 import customtkinter as ctk
 
-from .about_tab import AboutTabMixin
-from .convert_tab import ConvertTabMixin
+from doc_sanitizer.mapping import MappingPayload
+
+from .convert.tab import ConvertTabMixin
 from .defaults import APP_DISPLAY_NAME, APP_VERSION, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
-from .prompt_tab import PromptTabMixin
-from .restore_tab import RestoreTabMixin
+from .prompt.tab import PromptTabMixin
+from .restore.tab import RestoreTabMixin
 from .runtime import RuntimeMixin
-from .sanitize_tab import SanitizeTabMixin
+from .sanitize.tab import SanitizeTabMixin
 from .style import StyleMixin
-from .update_preferences import is_auto_update_check_enabled
+from .update.about_tab import AboutTabMixin
+from .update.preferences import is_auto_update_check_enabled
 from .widgets import SharedWidgetsMixin
 
 
@@ -91,10 +93,10 @@ class ConverterGUI(
         self.manual_sensitive_var = tk.StringVar()
         self.manual_placeholder_var = tk.StringVar()
         self.mapping_search_var = tk.StringVar()
-        self.current_mapping_data: dict[str, object] | None = None
+        self.current_mapping_data: MappingPayload | None = None
         self.scan_ready = False
         self.mapping_applied = False
-        self.mapping_undo_snapshot: dict[str, object] | None = None
+        self.mapping_undo_snapshot: MappingPayload | None = None
         self.mapping_search_after_id: str | None = None
         self.mapping_editor: tk.Entry | None = None
         self.mapping_editor_item: str | None = None

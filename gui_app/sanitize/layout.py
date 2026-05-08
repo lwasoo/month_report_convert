@@ -275,7 +275,7 @@ class SanitizeLayoutMixin:
         valid_entries = [
             entry
             for entry in entries
-            if str(entry.get("original", "")).strip() and str(entry.get("placeholder", "")).strip()
+            if entry.original and entry.placeholder
         ]
         has_mapping = len(valid_entries) > 0
         self.initial_scan_button.configure(state=("disabled" if has_mapping else "normal"))

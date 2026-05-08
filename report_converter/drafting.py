@@ -7,11 +7,11 @@ and metric extraction modules. This module combines those pieces into final slid
 from __future__ import annotations
 
 from .common import log, short_line, slide_caps
-from .llm_client import build_rewrite_prompt, call_ollama_json
-from .metrics import clean_metrics, extract_numeric_metrics, extract_numeric_metrics_from_ocr
+from .drafting_parts.llm_client import build_rewrite_prompt, call_ollama_json
+from .drafting_parts.metrics import clean_metrics, extract_numeric_metrics, extract_numeric_metrics_from_ocr
 from .models import Metrics, ParsedReport, SelectedSources, SlideDraft, TemplateSlide
-from .source_selection import matches_title_profile, select_source_lines
-from .text_cleanup import (
+from .drafting_parts.source_selection import matches_title_profile, select_source_lines
+from .drafting_parts.text_cleanup import (
     clean_generated_line,
     compress_for_ppt,
     dedupe_drafts_across_slides,

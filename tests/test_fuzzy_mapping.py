@@ -1,23 +1,18 @@
-"""Regression tests for fuzzy mapping, prompt, and placeholder repair behavior.
-
-The implementation is split across narrower modules, but these tests intentionally keep using
-the compatibility facade to protect older GUI and CLI imports.
-"""
+"""Regression tests for prompt and placeholder repair behavior."""
 
 from __future__ import annotations
 
 import json
 import unittest
 
-from doc_sanitizer.fuzzy_mapping import (
-    build_external_ai_prompt_sections,
-    closest_placeholder_for_token,
-    find_placeholder_like_tokens,
-    payload_from_json_text,
-    placeholder_token_category,
+from doc_sanitizer.prompt_builder import build_external_ai_prompt_sections, payload_from_json_text
+from doc_sanitizer.placeholders.repair import (
     suggest_placeholder_repairs,
     unresolved_placeholder_tokens,
 )
+from doc_sanitizer.placeholders.detection import find_placeholder_like_tokens
+from doc_sanitizer.placeholders.parser import placeholder_token_category
+from doc_sanitizer.placeholders.scoring import closest_placeholder_for_token
 from doc_sanitizer.mapping import mapping_entries
 
 

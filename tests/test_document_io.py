@@ -14,7 +14,8 @@ from pathlib import Path
 from docx import Document
 from pptx import Presentation
 
-from doc_sanitizer.document_io import apply_mapping_to_file, collect_texts_for_path, restore_file
+from doc_sanitizer.io.operations import apply_mapping_to_file, restore_file
+from doc_sanitizer.io.text_collection import collect_texts_for_path
 from doc_sanitizer.mapping import read_mapping
 
 

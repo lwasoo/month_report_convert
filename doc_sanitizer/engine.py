@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .document_io import apply_mapping_to_docx, apply_mapping_to_file, restore_docx, restore_file
+from .io.operations import apply_mapping_to_docx, apply_mapping_to_file, restore_docx, restore_file
 from .mapping import MappingLike, MappingPayload
 from .services import DocumentSanitizer
 

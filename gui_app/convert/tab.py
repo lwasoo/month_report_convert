@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .defaults import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
+from ..defaults import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 
 
 class ConvertTabMixin:

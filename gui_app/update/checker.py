@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from itertools import zip_longest
 from pathlib import Path
 
-from .defaults import APP_VERSION, GITHUB_LATEST_RELEASE_API
+from ..defaults import APP_VERSION, GITHUB_LATEST_RELEASE_API
 
 
 @dataclass

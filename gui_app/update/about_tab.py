@@ -7,10 +7,10 @@ import webbrowser
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from .defaults import APP_DISPLAY_NAME, APP_VERSION, GITHUB_RELEASES_URL
+from ..defaults import APP_DISPLAY_NAME, APP_VERSION, GITHUB_RELEASES_URL
 from .self_update import can_self_update_with_asset, launch_self_updater
-from .update_checker import UpdateInfo, download_release_asset, fetch_latest_release
-from .update_preferences import set_auto_update_check_enabled
+from .checker import UpdateInfo, download_release_asset, fetch_latest_release
+from .preferences import set_auto_update_check_enabled
 
 
 class AboutTabMixin:

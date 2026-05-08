@@ -146,7 +146,7 @@ class PromptTabMixin:
         self.prompt_output_text.insert("1.0", prompt)
         self.prompt_audit_text.delete("1.0", tk.END)
         self.prompt_audit_text.insert("1.0", audit)
-        count = len(payload.get("entries", []))
+        count = len(payload.entries or [])
         self.prompt_status_var.set(f"已生成 Prompt，映射 {count} 条")
 
     def copy_external_ai_prompt(self) -> None:

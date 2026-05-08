@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from doc_sanitizer.mapping import MappingPayload
-from gui_app.sanitize_tab import SanitizeTabMixin
+from gui_app.sanitize.tab import SanitizeTabMixin
 
 
 class SanitizeTabNumberingTests(unittest.TestCase):
@@ -29,6 +29,27 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(category, "COMPANY")
         self.assertEqual(placeholder, "__COMPANY_004__")
 
+    def test_batch_line_accepts_fullwidth_and_similar_pipe_separators(self) -> None:
+        tab = object.__new__(SanitizeTabMixin)
+
+        self.assertEqual(tab._parse_batch_line("COMPANY\uff5cAcme"), ("Acme", "COMPANY", ""))
+        self.assertEqual(tab._parse_batch_line("PERSON\u00a6Alice"), ("Alice", "PERSON", ""))
+        self.assertEqual(tab._parse_batch_line("PROJECT\u2223Phoenix"), ("Phoenix", "PROJECT", ""))
+        self.assertEqual(tab._parse_batch_line("com\uff5c23"), ("23", "COM", ""))
+
+    def test_batch_line_treats_custom_left_token_as_category(self) -> None:
+        tab = object.__new__(SanitizeTabMixin)
+
+        sensitive, category, placeholder = tab._parse_batch_line("com|99")
+
+        self.assertEqual((sensitive, category, placeholder), ("99", "COM", ""))
+
+    def test_batch_line_uses_arrow_for_sensitive_term_to_placeholder(self) -> None:
+        tab = object.__new__(SanitizeTabMixin)
+
+        self.assertEqual(tab._parse_batch_line("Acme=>COMPANY_009"), ("Acme", "", "COMPANY_009"))
+        self.assertEqual(tab._parse_batch_line("Acme=>__COMPANY_009__"), ("Acme", "", "__COMPANY_009__"))
+
     def test_edit_after_apply_requires_confirmation_and_marks_dirty(self) -> None:
         tab = object.__new__(SanitizeTabMixin)
         tab.mapping_applied = True
@@ -36,7 +57,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         rows: list[tuple[str, str]] = []
         tab.log_queue = type("FakeQueue", (), {"put": lambda _self, item: rows.append(item)})()
 
-        with patch("gui_app.sanitize_table.messagebox.askyesno", return_value=True):
+        with patch("gui_app.sanitize.table.messagebox.askyesno", return_value=True):
             allowed = tab._confirm_edit_after_apply()
 
         self.assertTrue(allowed)
@@ -159,6 +180,26 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(refreshed, ["refresh"])
         self.assertIsNone(tab.mapping_search_after_id)
 
+    def test_manual_entry_can_start_from_empty_mapping(self) -> None:
+        tab = object.__new__(SanitizeTabMixin)
+        root = tk.Tcl()
+        tab.current_mapping_data = None
+        tab.mapping_applied = False
+        tab.manual_sensitive_var = tk.StringVar(master=root, value="Acme")
+        tab.manual_placeholder_var = tk.StringVar(master=root, value="")
+        tab.manual_sensitive_entry = type("FakeEntry", (), {"cget": lambda _self, _key: "#111111"})()
+        tab.manual_placeholder_entry = type("FakeEntry", (), {"cget": lambda _self, _key: "#111111"})()
+        tab.mapping_summary_var = tk.StringVar(master=root)
+        tab._refresh_mapping_tree = lambda: None
+        tab._update_sanitize_action_states = lambda: None
+
+        tab.add_manual_mapping_entry()
+
+        self.assertIsInstance(tab.current_mapping_data, MappingPayload)
+        self.assertEqual(len(tab.current_mapping_data.entries), 1)
+        self.assertEqual(tab.current_mapping_data.entries[0].original, "Acme")
+        self.assertEqual(tab.current_mapping_data.entries[0].placeholder, "__COMPANY_001__")
+
     def test_source_change_can_clear_mapping_without_continuing_scan(self) -> None:
         tab = object.__new__(SanitizeTabMixin)
         tab.current_mapping_data = {
@@ -178,7 +219,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         tab._refresh_mapping_tree = lambda: None
         tab._update_sanitize_action_states = lambda: None
 
-        with patch("gui_app.sanitize_layout.messagebox.askyesnocancel", return_value=True):
+        with patch("gui_app.sanitize.layout.messagebox.askyesnocancel", return_value=True):
             should_continue = tab._confirm_source_change_or_clear(r"C:\new.docx")
 
         self.assertFalse(should_continue)
@@ -200,7 +241,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         rows: list[tuple[str, str]] = []
         tab.log_queue = type("FakeQueue", (), {"put": lambda _self, item: rows.append(item)})()
 
-        with patch("gui_app.sanitize_layout.messagebox.askyesnocancel", return_value=False):
+        with patch("gui_app.sanitize.layout.messagebox.askyesnocancel", return_value=False):
             should_continue = tab._confirm_source_change_or_clear(r"C:\new.docx")
 
         self.assertTrue(should_continue)
@@ -231,7 +272,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
             }
             mapping_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-            with patch("gui_app.sanitize_actions.filedialog.askopenfilename", return_value=str(mapping_path)):
+            with patch("gui_app.sanitize.actions.filedialog.askopenfilename", return_value=str(mapping_path)):
                 tab.load_mapping_json()
 
         self.assertTrue(tab.mapping_applied)

@@ -6,11 +6,13 @@ import copy
 import tkinter as tk
 from tkinter import messagebox
 
+from doc_sanitizer.mapping import EntryLike, MappingPayload, ReplacementItem
+
 from .mapping_service import SanitizeMappingService
 
 
 class SanitizeTableMixin:
-    def _mapping_entries(self) -> list[dict[str, object]]:
+    def _mapping_entries(self) -> list[ReplacementItem]:
         return SanitizeMappingService.entries(self.current_mapping_data)
 
     def _mapping_summary_text(self) -> str:
@@ -23,10 +25,10 @@ class SanitizeTableMixin:
         for idx, entry in enumerate(self._mapping_entries()):
             haystack = " ".join(
                 [
-                    str(entry.get("category", "")),
-                    str(entry.get("original", "")),
-                    str(entry.get("placeholder", "")),
-                    str(entry.get("source", "")),
+                    entry.category,
+                    entry.original,
+                    entry.placeholder,
+                    entry.source,
                 ]
             ).lower()
             if search and search not in haystack:
@@ -36,11 +38,11 @@ class SanitizeTableMixin:
                 "end",
                 iid=str(idx),
                 values=(
-                    "是" if bool(entry.get("enabled", True)) else "否",
-                    str(entry.get("category", "")),
-                    str(entry.get("original", "")),
-                    str(entry.get("placeholder", "")),
-                    str(entry.get("source", "")),
+                    "是" if entry.enabled else "否",
+                    entry.category,
+                    entry.original,
+                    entry.placeholder,
+                    entry.source,
                 ),
             )
 
@@ -109,20 +111,20 @@ class SanitizeTableMixin:
         entry = entries[idx]
         if column == "#2":
             category = (new_value or "MANUAL").upper()
-            entry["category"] = category
-            entry["placeholder"] = SanitizeMappingService.next_placeholder(entries, category, exclude_index=idx)
+            entry.category = category
+            entry.placeholder = SanitizeMappingService.next_placeholder(entries, category, exclude_index=idx)
         elif column == "#3":
             if new_value:
-                entry["original"] = new_value
+                entry.original = new_value
         elif column == "#4" and new_value:
             placeholder, category = SanitizeMappingService.normalize_placeholder_input(
                 new_value,
                 entries,
-                str(entry.get("category", "MANUAL")),
+                entry.category,
                 exclude_index=idx,
             )
-            entry["placeholder"] = placeholder
-            entry["category"] = category
+            entry.placeholder = placeholder
+            entry.category = category
         self._compact_mapping_placeholders(log_changes=False)
         self._finish_mapping_change()
 
@@ -147,7 +149,7 @@ class SanitizeTableMixin:
         for item_id in selected:
             idx = int(item_id)
             if 0 <= idx < len(entries):
-                entries[idx]["enabled"] = not bool(entries[idx].get("enabled", True))
+                entries[idx].enabled = not entries[idx].enabled
         self._finish_mapping_change()
 
     def remove_selected_mapping_entries(self) -> None:
@@ -185,10 +187,10 @@ class SanitizeTableMixin:
         if not self._confirm_edit_after_apply():
             return
         if not self.current_mapping_data:
-            self.current_mapping_data = {"version": 2, "source_file": "", "sanitized_file": "", "entries": []}
+            self.current_mapping_data = MappingPayload()
         self._save_mapping_undo_snapshot()
         entries = self._mapping_entries()
-        if any(str(item.get("original", "")).strip() == sensitive for item in entries):
+        if any(item.original == sensitive for item in entries):
             messagebox.showwarning("重复条目", "当前映射中已存在相同敏感词。")
             return
         entries.append(SanitizeMappingService.manual_entry(sensitive, replacement, entries))
@@ -207,7 +209,7 @@ class SanitizeTableMixin:
         if not self._confirm_edit_after_apply():
             return
         if not self.current_mapping_data:
-            self.current_mapping_data = {"version": 2, "source_file": "", "sanitized_file": "", "entries": []}
+            self.current_mapping_data = MappingPayload()
         self._save_mapping_undo_snapshot()
         entries = self._mapping_entries()
         added = 0
@@ -215,7 +217,7 @@ class SanitizeTableMixin:
             sensitive, category_hint, placeholder_hint = SanitizeMappingService.parse_batch_line(line)
             if not sensitive:
                 continue
-            if any(str(item.get("original", "")).strip() == sensitive for item in entries):
+            if any(item.original == sensitive for item in entries):
                 continue
             entries.append(SanitizeMappingService.manual_entry(sensitive, placeholder_hint or category_hint, entries))
             added += 1
@@ -288,19 +290,19 @@ class SanitizeTableMixin:
     def _looks_like_placeholder_token(self, text: str) -> bool:
         return SanitizeMappingService.looks_like_placeholder_token(text)
 
-    def _next_manual_placeholder(self, entries: list[dict[str, object]], category: str = "MANUAL", exclude_index: int | None = None) -> str:
+    def _next_manual_placeholder(self, entries: list[EntryLike], category: str = "MANUAL", exclude_index: int | None = None) -> str:
         return SanitizeMappingService.next_placeholder(entries, category, exclude_index=exclude_index)
 
     def _normalize_placeholder_input(
         self,
         raw_value: str,
-        entries: list[dict[str, object]],
+        entries: list[EntryLike],
         preferred_category: str,
         exclude_index: int | None = None,
     ) -> tuple[str, str]:
         return SanitizeMappingService.normalize_placeholder_input(raw_value, entries, preferred_category, exclude_index=exclude_index)
 
-    def _tail_placeholder(self, entries: list[dict[str, object]], category: str, exclude_index: int | None = None) -> str:
+    def _tail_placeholder(self, entries: list[EntryLike], category: str, exclude_index: int | None = None) -> str:
         return SanitizeMappingService.tail_placeholder(entries, category, exclude_index=exclude_index)
 
     def _infer_manual_category(self, placeholder: str, sensitive: str = "") -> str:
@@ -317,7 +319,7 @@ class SanitizeTableMixin:
         valid_entries = [
             entry
             for entry in entries
-            if str(entry.get("original", "")).strip() and str(entry.get("placeholder", "")).strip()
+            if entry.original and entry.placeholder
         ]
         has_mapping = len(valid_entries) > 0
         self.initial_scan_button.configure(state=("disabled" if has_mapping else "normal"))

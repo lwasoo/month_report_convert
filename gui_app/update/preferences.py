@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from .defaults import APP_NAME
+from ..defaults import APP_NAME
 
 
 def update_preferences_path() -> Path:

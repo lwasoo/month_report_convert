@@ -9,14 +9,14 @@ from pptx import Presentation
 
 from office_conversion import convert_from_ooxml, convert_to_ooxml
 from .common import log
-from .content_regions import add_content_textbox
+from .ppt.content_regions import add_content_textbox
 from .drafting import build_drafts_and_metrics
-from .formal_layout import add_formal_layout_content_v2
+from .ppt.formal_layout import add_formal_layout_content_v2
 from .models import Metrics, SlideDraft, TemplateSlide
-from .pagination import split_into_pages
+from .ppt.pagination import split_into_pages
 from .parsing import detect_month_label, extract_doc_payload
-from .slide_ops import extract_template_slides, insert_slide_after, remove_auto_shapes, set_slide_title_text
-from .table_fill import fill_table_metrics
+from .ppt.slide_ops import extract_template_slides, insert_slide_after, remove_auto_shapes, set_slide_title_text
+from .ppt.table_fill import fill_table_metrics
 
 
 def convert(

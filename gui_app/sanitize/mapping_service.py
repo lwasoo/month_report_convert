@@ -10,7 +10,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from doc_sanitizer.mapping import MappingPayload, compact_entry_placeholders
+from doc_sanitizer.mapping import (
+    EntryLike,
+    MappingPayload,
+    ReplacementItem,
+    coerce_mapping_payload,
+    compact_entry_placeholders,
+    entries_to_dicts,
+    normalize_entries,
+)
 
 
 MappingData = MappingPayload | dict[str, Any]
@@ -18,22 +26,40 @@ MappingData = MappingPayload | dict[str, Any]
 
 class SanitizeMappingService:
     CATEGORY_TOKENS = {"COMPANY", "PERSON", "PROJECT", "CASE", "CODE", "CUSTOMER", "SUPPLIER", "TITLE", "MANUAL"}
+    BATCH_SEPARATOR_TRANSLATION = str.maketrans(
+        {
+            "\uff5c": "|",
+            "\u2223": "|",
+            "\u00a6": "|",
+            "\uffe8": "|",
+            "\ufe31": "|",
+            "\u2502": "|",
+            "\u2503": "|",
+        }
+    )
 
     @staticmethod
-    def entries(payload: MappingData | None) -> list[dict[str, object]]:
+    def entries(payload: MappingData | None) -> list[ReplacementItem]:
         if not payload:
             return []
-        raw_entries = payload.get("entries", [])
-        return raw_entries if isinstance(raw_entries, list) else []
+        normalized = coerce_mapping_payload(payload)
+        if isinstance(payload, dict):
+            payload["entries"] = normalized.entries if normalized.entries is not None else []
+        return normalized.entries if normalized.entries is not None else []
 
     @staticmethod
-    def summary_text(entries: list[dict[str, object]]) -> str:
-        enabled = sum(1 for entry in entries if bool(entry.get("enabled", True)))
+    def _items(entries: list[EntryLike]) -> list[ReplacementItem]:
+        return normalize_entries(entries)
+
+    @staticmethod
+    def summary_text(entries: list[EntryLike]) -> str:
+        entries = SanitizeMappingService._items(entries)
+        enabled = sum(1 for entry in entries if entry.enabled)
         categories: dict[str, int] = {}
         for entry in entries:
-            if not bool(entry.get("enabled", True)):
+            if not entry.enabled:
                 continue
-            category = str(entry.get("category", "MANUAL"))
+            category = entry.category
             categories[category] = categories.get(category, 0) + 1
         top = " / ".join(f"{key}:{value}" for key, value in list(categories.items())[:6]) if categories else "无"
         return f"当前候选 {len(entries)} 条，启用 {enabled} 条；分类概览：{top}"
@@ -43,72 +69,71 @@ class SanitizeMappingService:
         if not payload:
             return
         entries = SanitizeMappingService.entries(payload)
-        replacements: dict[str, str] = {}
-        categories: dict[str, str] = {}
-        counts: dict[str, int] = {}
-        for entry in entries:
-            if not bool(entry.get("enabled", True)):
-                continue
-            placeholder = str(entry.get("placeholder", "")).strip()
-            original = str(entry.get("original", "")).strip()
-            category = str(entry.get("category", "MANUAL")).strip().upper()
-            if not placeholder or not original:
-                continue
-            replacements[placeholder] = original
-            categories[placeholder] = category
-            counts[category] = counts.get(category, 0) + 1
-        payload["entries"] = entries
-        payload["replacements"] = replacements
-        payload["categories"] = categories
-        payload["counts"] = counts
+        normalized = MappingPayload(entries=entries)
+        if isinstance(payload, MappingPayload):
+            payload.entries = normalized.entries
+            payload.refresh()
+            return
+        payload["entries"] = entries_to_dicts(normalized.entries or [])
+        payload["replacements"] = normalized.replacements
+        payload["categories"] = normalized.categories
+        payload["counts"] = normalized.counts
 
     @staticmethod
-    def compact_placeholders(entries: list[dict[str, object]]) -> dict[str, str]:
+    def compact_placeholders(entries: list[EntryLike]) -> dict[str, str]:
         return compact_entry_placeholders(entries)
 
     @staticmethod
     def parse_batch_line(line: str) -> tuple[str, str, str]:
-        text = line.strip()
+        text = SanitizeMappingService.normalize_batch_line(line)
         if not text:
             return "", "", ""
         if "=>" in text:
             left, right = [part.strip() for part in text.split("=>", 1)]
             if left and right:
-                if SanitizeMappingService.looks_like_category_token(left):
-                    return right, left.upper(), ""
                 return left, "", right
         if "->" in text:
             left, right = [part.strip() for part in text.split("->", 1)]
             if left and right:
-                if SanitizeMappingService.looks_like_category_token(left):
-                    return right, left.upper(), ""
                 return left, "", right
         for sep in ("|", "\t", "，", ","):
             if sep in text:
                 left, right = [part.strip() for part in text.split(sep, 1)]
                 if not left or not right:
                     continue
-                if SanitizeMappingService.looks_like_category_token(left):
+                if SanitizeMappingService.looks_like_category_token(left) or SanitizeMappingService.looks_like_custom_category_token(left):
                     return right, left.upper(), ""
-                if SanitizeMappingService.looks_like_placeholder_token(right):
-                    return left, "", right
-                if SanitizeMappingService.looks_like_category_token(right):
-                    return left, right.upper(), ""
         return text, "", ""
+
+    @staticmethod
+    def normalize_batch_line(line: str) -> str:
+        text = line.strip().translate(SanitizeMappingService.BATCH_SEPARATOR_TRANSLATION)
+        text = text.replace("\uff1d\uff1e", "=>").replace("\uff0d\uff1e", "->")
+        text = text.replace("\u2192", "->").replace("\u21d2", "=>")
+        return text
 
     @staticmethod
     def looks_like_category_token(text: str) -> bool:
         return text.strip().upper() in SanitizeMappingService.CATEGORY_TOKENS
 
     @staticmethod
+    def looks_like_custom_category_token(text: str) -> bool:
+        return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{1,24}", text.strip()))
+
+    @staticmethod
     def looks_like_placeholder_token(text: str) -> bool:
         return bool(re.fullmatch(r"(?:__)?[A-Za-z]+(?:_[0-9]{1,4})?(?:__)?", text.strip()))
 
     @staticmethod
-    def next_placeholder(entries: list[dict[str, object]], category: str = "MANUAL", exclude_index: int | None = None) -> str:
+    def looks_like_explicit_placeholder_token(text: str) -> bool:
+        return bool(re.fullmatch(r"(?:__)?[A-Za-z]+_[0-9]{1,4}(?:__)?", text.strip()))
+
+    @staticmethod
+    def next_placeholder(entries: list[EntryLike], category: str = "MANUAL", exclude_index: int | None = None) -> str:
+        entries = SanitizeMappingService._items(entries)
         index = 1
         used = {
-            str(item.get("placeholder", "")).strip().upper()
+            item.placeholder.strip().upper()
             for idx, item in enumerate(entries)
             if exclude_index is None or idx != exclude_index
         }
@@ -121,22 +146,33 @@ class SanitizeMappingService:
     @staticmethod
     def normalize_placeholder_input(
         raw_value: str,
-        entries: list[dict[str, object]],
+        entries: list[EntryLike],
         preferred_category: str,
         exclude_index: int | None = None,
     ) -> tuple[str, str]:
         raw = raw_value.strip()
+        entries = SanitizeMappingService._items(entries)
         category = preferred_category.upper() or "MANUAL"
         if raw:
             cleaned = raw.upper().replace("-", "_").replace(" ", "_")
             cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+            if cleaned.isdigit():
+                desired = f"__{category}_{int(cleaned):03d}__"
+                used = {
+                    item.placeholder.strip().upper()
+                    for idx, item in enumerate(entries)
+                    if exclude_index is None or idx != exclude_index
+                }
+                if desired.upper() not in used:
+                    return desired, category
+                return SanitizeMappingService.tail_placeholder(entries, category, exclude_index=exclude_index), category
             match = re.fullmatch(r"(?:__)?([A-Z]+)(?:_)?(\d+)?(?:__)?", cleaned)
             if match:
                 category = match.group(1).upper()
                 if match.group(2):
                     desired = f"__{category}_{int(match.group(2)):03d}__"
                     used = {
-                        str(item.get("placeholder", "")).strip().upper()
+                        item.placeholder.strip().upper()
                         for idx, item in enumerate(entries)
                         if exclude_index is None or idx != exclude_index
                     }
@@ -146,13 +182,14 @@ class SanitizeMappingService:
         return SanitizeMappingService.next_placeholder(entries, category, exclude_index=exclude_index), category
 
     @staticmethod
-    def tail_placeholder(entries: list[dict[str, object]], category: str, exclude_index: int | None = None) -> str:
+    def tail_placeholder(entries: list[EntryLike], category: str, exclude_index: int | None = None) -> str:
+        entries = SanitizeMappingService._items(entries)
         category = category.upper()
         max_index = 0
         for idx, item in enumerate(entries):
             if exclude_index is not None and idx == exclude_index:
                 continue
-            placeholder = str(item.get("placeholder", "")).strip().upper()
+            placeholder = item.placeholder.strip().upper()
             if not placeholder.startswith(f"__{category}_"):
                 continue
             match = re.search(r"_(\d{1,5})__", placeholder)
@@ -195,13 +232,13 @@ class SanitizeMappingService:
         return "MANUAL"
 
     @staticmethod
-    def manual_entry(original: str, placeholder_hint: str, entries: list[dict[str, object]]) -> dict[str, object]:
+    def manual_entry(original: str, placeholder_hint: str, entries: list[EntryLike]) -> ReplacementItem:
         category = SanitizeMappingService.infer_sensitive_category(original, placeholder_hint)
         placeholder, _ = SanitizeMappingService.normalize_placeholder_input(placeholder_hint or "", entries, category)
-        return {
-            "placeholder": placeholder,
-            "original": original,
-            "category": SanitizeMappingService.infer_manual_category(placeholder, original),
-            "enabled": True,
-            "source": "manual",
-        }
+        return ReplacementItem(
+            placeholder=placeholder,
+            original=original,
+            category=SanitizeMappingService.infer_manual_category(placeholder, original),
+            enabled=True,
+            source="manual",
+        )

@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import unittest
 
-from report_converter.metrics import clean_metrics, extract_bu_metrics_from_ocr, extract_numeric_metrics
+from report_converter.drafting_parts.metrics import clean_metrics, extract_bu_metrics_from_ocr, extract_numeric_metrics
 from report_converter.models import ReportParagraph, ReportSection, SlideDraft, TemplateSlide
-from report_converter.pagination import split_into_pages
-from report_converter.source_selection import matches_title_profile, select_source_lines
-from report_converter.text_cleanup import dedupe_drafts_across_slides, detail_fallback_line, is_too_generic
+from report_converter.ppt.pagination import split_into_pages
+from report_converter.drafting_parts.source_selection import matches_title_profile, select_source_lines
+from report_converter.drafting_parts.text_cleanup import dedupe_drafts_across_slides, detail_fallback_line, is_too_generic
 
 
 class ReportConverterRuleTests(unittest.TestCase):

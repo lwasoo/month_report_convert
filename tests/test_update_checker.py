@@ -8,15 +8,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from gui_app.about_tab import AboutTabMixin
-from gui_app.self_update import build_windows_update_script, windows_update_target_path
-from gui_app.update_preferences import (
+from gui_app.update.about_tab import AboutTabMixin
+from gui_app.update.self_update import build_windows_update_script, windows_update_target_path
+from gui_app.update.preferences import (
     is_auto_update_check_enabled,
     load_update_preferences,
     set_auto_update_check_enabled,
     update_preferences_path,
 )
-from gui_app.update_checker import (
+from gui_app.update.checker import (
     ReleaseAsset,
     UpdateInfo,
     compare_versions,
@@ -90,7 +90,7 @@ class UpdateCheckerTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             prefs_path = Path(temp_dir) / "update_preferences.json"
             with patch.dict("os.environ", {"FILE_TOOLBOX_UPDATE_PREFS_PATH": str(prefs_path)}):
-                with patch("gui_app.about_tab.messagebox.askyesno", return_value=False) as ask:
+                with patch("gui_app.update.about_tab.messagebox.askyesno", return_value=False) as ask:
                     harness._handle_update_result(info, silent=True)
 
                 self.assertFalse(is_auto_update_check_enabled())
@@ -116,7 +116,7 @@ class UpdateCheckerTests(unittest.TestCase):
             prefs_path = Path(temp_dir) / "update_preferences.json"
             with patch.dict("os.environ", {"FILE_TOOLBOX_UPDATE_PREFS_PATH": str(prefs_path)}):
                 set_auto_update_check_enabled(False)
-                with patch("gui_app.about_tab.messagebox.askyesno", return_value=True):
+                with patch("gui_app.update.about_tab.messagebox.askyesno", return_value=True):
                     harness._handle_update_result(info, silent=True)
 
                 self.assertTrue(is_auto_update_check_enabled())

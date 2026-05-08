@@ -7,7 +7,7 @@ import unittest
 import tkinter as tk
 
 from doc_sanitizer.mapping import MappingPayload
-from gui_app.prompt_tab import PromptTabMixin
+from gui_app.prompt.tab import PromptTabMixin
 
 
 class FakeText:

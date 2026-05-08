@@ -221,8 +221,11 @@ GUI 模块：
 - `gui_app/runtime.py`：后台任务、日志桥接、模型探测、文件打开等运行时能力。
 - `gui_app/style.py`：主题和样式。
 - `gui_app/widgets.py`：共用控件。
+- `gui_app/convert/`：月报转 PPT 页。
 - `gui_app/sanitize/`：脱敏页 feature package，包含 layout、actions、table、mapping service。
-- `gui_app/*_tab.py`：其他功能页；部分根级 `sanitize_*` 文件仅为兼容旧导入。
+- `gui_app/restore/`：还原页。
+- `gui_app/prompt/`：外部 AI Prompt 生成页。
+- `gui_app/update/`：关于页、版本检查、用户更新偏好和自更新脚本。
 
 脱敏/还原模块：
 
@@ -240,7 +243,6 @@ GUI 模块：
 - `doc_sanitizer/placeholders/detection.py`：未知或损坏占位符检测。
 - `doc_sanitizer/placeholders/repair.py`：占位符修复组合逻辑。
 - `doc_sanitizer/prompt_builder.py`：外部 Prompt 和内部审核说明生成。
-- `doc_sanitizer/fuzzy_mapping.py`、`doc_sanitizer/document_io.py` 和部分根级同名模块：兼容 facade，保留旧导入路径，不应继续增加业务逻辑。
 
 报告转换模块：
 
@@ -251,7 +253,6 @@ GUI 模块：
 - `report_converter/drafting.py`：组织 slide draft。
 - `report_converter/drafting_parts/source_selection.py`、`metrics.py`、`rules.py`、`text_cleanup.py`、`llm_client.py`：来源选择、指标提取、规则、文本清理和 LLM 调用。
 - `report_converter/ppt/content_regions.py`、`formal_layout.py`、`pagination.py`、`slide_ops.py`、`table_fill.py`：PPT 布局、分页、页面操作和表格填充。
-- `report_converter/layout.py`：兼容 facade，不应继续增加业务逻辑。
 
 ## 实现说明
 
@@ -271,7 +272,7 @@ GUI 模块：
 - `enabled`
 - `source`
 
-代码内部使用 `MappingPayload` dataclass 表达映射 payload，同时保留 `payload["entries"]` 这类旧访问方式，兼容现有 GUI 和测试。
+代码内部使用 `MappingPayload` dataclass 表达映射 payload，`entries` 内部是 `ReplacementItem` 领域对象；写入 JSON、展示或兼容旧 dict 输入时再转换为普通字典。
 
 ### 旧版 Office 格式
 

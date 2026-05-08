@@ -7,6 +7,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from doc_sanitizer import apply_mapping_to_file, read_mapping, scan_file
+from doc_sanitizer.mapping import MappingPayload
 from ..defaults import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 
 
@@ -23,8 +24,8 @@ class SanitizeActionsMixin:
         self.current_mapping_data = payload
         self.scan_ready = True
         self.sanitize_mapping_var.set(path)
-        source_file = str(payload.get("source_file", "")).strip()
-        sanitized_file = str(payload.get("sanitized_file", "")).strip()
+        source_file = payload.source_file.strip()
+        sanitized_file = payload.sanitized_file.strip()
         self.mapping_applied = bool(sanitized_file)
         if source_file:
             self.sanitize_input_var.set(source_file)
@@ -84,7 +85,7 @@ class SanitizeActionsMixin:
         )
         self.root.after(0, lambda: self._after_scan_complete(payload))
 
-    def _after_scan_complete(self, payload: dict[str, object]) -> None:
+    def _after_scan_complete(self, payload: MappingPayload) -> None:
         self.current_mapping_data = payload
         self.scan_ready = True
         self.mapping_applied = False

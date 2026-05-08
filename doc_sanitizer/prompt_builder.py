@@ -7,13 +7,12 @@ separately so users can review grouping decisions without leaking that data exte
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from .entity_matching import EntityGroup, find_entity_matches, group_entity_matches
-from .mapping import ReplacementItem, mapping_entries, normalize_entries
+from .mapping import MappingLike, MappingPayload, ReplacementItem, mapping_entries
 
 
-def payload_from_json_text(raw: str) -> dict[str, Any]:
+def payload_from_json_text(raw: str) -> MappingPayload:
     """Load either the current entries schema or the older replacements/categories schema."""
     data = json.loads(raw)
     if not isinstance(data, dict):
@@ -35,21 +34,21 @@ def payload_from_json_text(raw: str) -> dict[str, Any]:
             }
             for placeholder, original in replacements.items()
         ]
-    payload = {"version": 2, "entries": normalize_entries(entries if isinstance(entries, list) else [])}
-    if not payload["entries"]:
+    payload = MappingPayload(version=2, entries=entries if isinstance(entries, list) else [])
+    if not payload.entries:
         raise ValueError("JSON 中没有可用映射条目。")
     return payload
 
 
-def enabled_items_from_payload(payload: dict[str, Any]) -> list[ReplacementItem]:
+def enabled_items_from_payload(payload: MappingLike) -> list[ReplacementItem]:
     return mapping_entries(payload, only_enabled=True)
 
 
-def build_external_ai_prompt(payload: dict[str, Any]) -> str:
+def build_external_ai_prompt(payload: MappingLike) -> str:
     return build_external_ai_prompt_sections(payload)[0]
 
 
-def build_external_ai_prompt_sections(payload: dict[str, Any]) -> tuple[str, str]:
+def build_external_ai_prompt_sections(payload: MappingLike) -> tuple[str, str]:
     items = enabled_items_from_payload(payload)
     groups = group_entity_matches(items)
     return "\n".join(_build_external_prompt_lines(groups)), "\n".join(_build_internal_audit_lines(items, groups))

@@ -7,15 +7,13 @@ rule-based extraction, and optionally asks the LLM helper for additional candida
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
 from report_converter.common import log, normalize_text
 
-from .file_types import default_sanitized_path, ensure_supported_path
+from .io.file_types import default_sanitized_path, ensure_supported_path
 from .llm_assist import collect_llm_candidates
-from .mapping import MappingLike, MappingPayload, coerce_mapping_payload, merge_entries, normalize_entries, read_mapping
+from .mapping import EntryLike, MappingLike, MappingPayload, coerce_mapping_payload, merge_entries, normalize_entries, read_mapping
 from .patterns import extract_contextual_candidates, match_candidates_in_text
-from .text_collection import collect_texts_for_path
+from .io.text_collection import collect_texts_for_path
 
 
 def build_mapping_payload(
@@ -29,9 +27,9 @@ def build_mapping_payload(
     ollama_url: str,
     timeout_sec: int,
     retries: int,
-    existing_entries_override: list[dict[str, Any]] | None = None,
+    existing_entries_override: list[EntryLike] | None = None,
 ) -> MappingPayload:
-    existing_entries: list[dict[str, Any]] = []
+    existing_entries: list[EntryLike] = []
     if existing_entries_override is not None:
         existing_entries = normalize_entries(existing_entries_override)
         log(f"已加载当前内存映射: {len(existing_entries)} 条")
@@ -45,7 +43,7 @@ def build_mapping_payload(
     candidates = collect_candidates(texts, custom_terms)
     if use_llm_assist:
         try:
-            existing_terms = {normalize_text(str(entry.get("original", ""))) for entry in existing_entries}
+            existing_terms = {normalize_text(entry.original) for entry in normalize_entries(existing_entries)}
             llm_candidates = collect_llm_candidates(
                 texts,
                 model=model,
