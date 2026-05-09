@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .tab import ConvertTabMixin
+from .tab import ConvertTabController
 
-__all__ = ["ConvertTabMixin"]
-
+__all__ = ["ConvertTabController"]

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .about_tab import AboutTabMixin
+from .about_tab import AboutTabController
 
-__all__ = ["AboutTabMixin"]
-
+__all__ = ["AboutTabController"]

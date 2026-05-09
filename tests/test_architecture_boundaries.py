@@ -1,4 +1,4 @@
-"""Architecture boundary tests for recently split modules.
+﻿"""Architecture boundary tests for recently split modules.
 
 These tests are intentionally small: they protect import contracts and ownership boundaries
 so future refactors can move implementation without silently breaking callers.
@@ -13,20 +13,24 @@ from doc_sanitizer import prompt_builder
 from doc_sanitizer.services import DocumentSanitizer
 from doc_sanitizer.mapping import MappingPayload, ReplacementItem
 from gui_app.app import ConverterGUI
+from gui_app.convert.tab import ConvertTabController
+from gui_app.prompt.tab import PromptTabController
 from gui_app.runtime import RuntimeMixin
-from gui_app.sanitize.actions import SanitizeActionsMixin
-from gui_app.sanitize.layout import SanitizeLayoutMixin
+from gui_app.restore.tab import RestoreTabController
+from gui_app.sanitize.actions import SanitizeActions
+from gui_app.sanitize.layout import SanitizeLayout
 from gui_app.sanitize.mapping_service import SanitizeMappingService
-from gui_app.sanitize.table import SanitizeTableMixin
-from gui_app.sanitize.tab import SanitizeTabMixin
+from gui_app.sanitize.table import SanitizeMappingTable
+from gui_app.sanitize.tab import SanitizeTabController
 from gui_app.style import StyleMixin
+from gui_app.update.about_tab import AboutTabController
 from gui_app.widgets import SharedWidgetsMixin
 from report_converter.models import Metrics, ParsedReport, ReportParagraph, ReportSection, SelectedSources, TitleProfile
 from report_converter.services import ReportConverter
 
 
 class ArchitectureBoundaryTests(unittest.TestCase):
-    """Check import contracts and mixin ownership after module splits."""
+    """Check import contracts and ownership boundaries after module splits."""
 
     def test_object_oriented_service_entry_points_exist(self) -> None:
         # Architecture contract: public workflows should have class-based service entry points,
@@ -79,16 +83,39 @@ class ArchitectureBoundaryTests(unittest.TestCase):
         self.assertIs(ConverterGUI._start_worker, RuntimeMixin._start_worker)
         self.assertIs(ConverterGUI._palette, StyleMixin._palette)
         self.assertIs(ConverterGUI._create_log_widget, SharedWidgetsMixin._create_log_widget)
+        self.assertFalse(hasattr(ConverterGUI, "start_convert"))
+        self.assertFalse(hasattr(ConverterGUI, "start_restore"))
+        self.assertFalse(hasattr(ConverterGUI, "generate_external_ai_prompt"))
+        self.assertFalse(hasattr(ConverterGUI, "check_updates_async"))
+        self.assertFalse(hasattr(ConverterGUI, "start_scan_mapping"))
 
-    def test_sanitize_tab_is_composed_from_smaller_mixins(self) -> None:
-        # Ownership contract: sanitize_tab.py should stay a composition point, with layout,
-        # background actions, and mapping table behavior owned by separate modules.
-        self.assertIs(SanitizeTabMixin._build_sanitize_tab, SanitizeLayoutMixin._build_sanitize_tab)
-        self.assertIs(SanitizeTabMixin.start_scan_mapping, SanitizeActionsMixin.start_scan_mapping)
-        self.assertIs(SanitizeTabMixin._refresh_mapping_tree, SanitizeTableMixin._refresh_mapping_tree)
+    def test_sanitize_tab_is_composed_from_smaller_components(self) -> None:
+        # Ownership contract: the sanitize controller composes layout, background actions,
+        # and mapping table behavior without exposing them on the app shell.
+        self.assertIs(SanitizeTabController._build_sanitize_tab, SanitizeLayout._build_sanitize_tab)
+        self.assertIs(SanitizeTabController.start_scan_mapping, SanitizeActions.start_scan_mapping)
+        self.assertIs(SanitizeTabController._refresh_mapping_tree, SanitizeMappingTable._refresh_mapping_tree)
+        self.assertTrue(hasattr(SanitizeTabController, "start_scan_mapping"))
+
+    def test_restore_tab_is_scoped_to_controller(self) -> None:
+        self.assertTrue(hasattr(RestoreTabController, "start_restore"))
+        self.assertTrue(hasattr(RestoreTabController, "_show_unknown_placeholder_dialog"))
+        self.assertFalse(hasattr(ConverterGUI, "_show_unknown_placeholder_dialog"))
+
+    def test_convert_tab_is_scoped_to_controller(self) -> None:
+        self.assertTrue(hasattr(ConvertTabController, "start_convert"))
+        self.assertFalse(hasattr(ConverterGUI, "_browse_docx"))
+
+    def test_prompt_tab_is_scoped_to_controller(self) -> None:
+        self.assertTrue(hasattr(PromptTabController, "generate_external_ai_prompt"))
+        self.assertFalse(hasattr(ConverterGUI, "copy_external_ai_prompt"))
+
+    def test_about_tab_is_scoped_to_controller(self) -> None:
+        self.assertTrue(hasattr(AboutTabController, "check_updates_async"))
+        self.assertFalse(hasattr(ConverterGUI, "download_latest_update_async"))
 
     def test_sanitize_mapping_logic_lives_in_service(self) -> None:
-        # Ownership contract: pure mapping rules should live outside Tk mixins.
+        # Ownership contract: pure mapping rules should live outside Tk components.
         entries = [{"placeholder": "__COMPANY_001__", "original": "Acme", "category": "COMPANY", "enabled": True}]
 
         self.assertEqual(SanitizeMappingService.summary_text(entries), "当前候选 1 条，启用 1 条；分类概览：COMPANY:1")
@@ -119,3 +146,4 @@ class ArchitectureBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

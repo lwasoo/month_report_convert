@@ -8,7 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from gui_app.update.about_tab import AboutTabMixin
+from gui_app.update.about_tab import AboutTabController
 from gui_app.update.self_update import build_windows_update_script, windows_update_target_path
 from gui_app.update.preferences import (
     is_auto_update_check_enabled,
@@ -43,7 +43,7 @@ class _Button:
             self.state = kwargs["state"]
 
 
-class _AboutTabHarness(AboutTabMixin):
+class _AboutTabHarness(AboutTabController):
     def __init__(self) -> None:
         self.update_status_var = _StatusVar()
         self.check_update_button = _Button()

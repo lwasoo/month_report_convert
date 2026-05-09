@@ -1,4 +1,4 @@
-"""Placeholder repair planning for restore workflows."""
+﻿"""Placeholder repair planning for restore workflows."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from doc_sanitizer.mapping import mapping_entries
 from doc_sanitizer.placeholders.repair import PlaceholderRepair, suggest_placeholder_repairs, unresolved_placeholder_tokens
 
 
-class RestoreRepairsMixin:
+class RestoreRepairPlanner:
     def _confirm_placeholder_repairs(self, input_path: Path, mapping_path: Path) -> tuple[dict[str, str], dict[str, str], dict[str, str]] | None:
         payload = read_mapping(mapping_path)
         items = mapping_entries(payload, only_enabled=False)
@@ -53,3 +53,4 @@ class RestoreRepairsMixin:
             self._last_manual_placeholder_repairs = manual_repairs
         all_repairs = {**auto_repairs, **confirmed_repairs, **manual_repairs}
         return all_repairs, auto_repairs, confirmed_repairs
+

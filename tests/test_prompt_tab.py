@@ -7,7 +7,7 @@ import unittest
 import tkinter as tk
 
 from doc_sanitizer.mapping import MappingPayload
-from gui_app.prompt.tab import PromptTabMixin
+from gui_app.prompt.tab import PromptTabController
 
 
 class FakeText:
@@ -25,14 +25,15 @@ class PromptTabTests(unittest.TestCase):
     """Protect prompt generation inputs shared from the sanitize tab."""
 
     def test_use_current_mapping_accepts_mapping_payload_dataclass(self) -> None:
-        tab = object.__new__(PromptTabMixin)
-        tab.current_mapping_data = MappingPayload(
+        tab = object.__new__(PromptTabController)
+        current_mapping = MappingPayload(
             source_file="source.docx",
             sanitized_file="source_脱敏.docx",
             entries=[
                 {"placeholder": "__COMPANY_001__", "original": "Acme", "category": "COMPANY", "enabled": True}
             ],
         )
+        tab._get_current_mapping = lambda: current_mapping
         tab.prompt_json_text = FakeText()
         tab.prompt_status_var = tk.StringVar(master=tk.Tcl())
 

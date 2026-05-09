@@ -1,4 +1,4 @@
-"""Mapping table editing and metadata helpers for the sanitize tab."""
+﻿"""Mapping table editing and metadata helpers for the sanitize tab."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from doc_sanitizer.mapping import EntryLike, MappingPayload, ReplacementItem
 from .mapping_service import SanitizeMappingService
 
 
-class SanitizeTableMixin:
+class SanitizeMappingTable:
     def _mapping_entries(self) -> list[ReplacementItem]:
         return SanitizeMappingService.entries(self.current_mapping_data)
 
@@ -325,3 +325,4 @@ class SanitizeTableMixin:
         self.initial_scan_button.configure(state=("disabled" if has_mapping else "normal"))
         self.rescan_button.configure(state=("normal" if has_mapping else "disabled"))
         self.apply_mapping_button.configure(state=("normal" if has_mapping else "disabled"))
+

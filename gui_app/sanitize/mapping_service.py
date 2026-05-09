@@ -2,7 +2,7 @@
 
 The sanitize tab owns widgets and user interactions. This service owns mapping data rules:
 summary text, metadata refresh, placeholder numbering, batch-line parsing, and category
-inference. Keeping these operations out of Tk mixins makes them easier to test and reuse.
+inference. Keeping these operations out of Tk components makes them easier to test and reuse.
 """
 
 from __future__ import annotations

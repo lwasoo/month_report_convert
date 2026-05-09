@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import threading
+import tkinter as tk
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -13,7 +15,13 @@ from .checker import UpdateInfo, download_release_asset, fetch_latest_release
 from .preferences import set_auto_update_check_enabled
 
 
-class AboutTabMixin:
+class AboutTabController:
+    def __init__(self, parent: ttk.Frame, *, root: tk.Tk, open_path_in_file_manager: Callable[[Path], None]) -> None:
+        self.root = root
+        self._open_path_in_file_manager_callback = open_path_in_file_manager
+        self.latest_update_info: UpdateInfo | None = None
+        self._build_about_tab(parent)
+
     def _build_about_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
@@ -38,7 +46,6 @@ class AboutTabMixin:
             justify="left",
         ).grid(row=3, column=0, sticky="w", pady=(14, 0))
 
-        self.latest_update_info: UpdateInfo | None = None
         self.update_status_var = self._make_string_var("等待检测更新")
         ttk.Label(card, textvariable=self.update_status_var, style="Status.TLabel").grid(row=4, column=0, sticky="w", pady=(24, 0))
 
@@ -70,8 +77,6 @@ class AboutTabMixin:
         ).grid(row=6, column=0, sticky="w", pady=(18, 0))
 
     def _make_string_var(self, value: str):
-        import tkinter as tk
-
         return tk.StringVar(value=value)
 
     def check_updates_async(self, silent: bool = True) -> None:
@@ -163,8 +168,9 @@ class AboutTabMixin:
             f"更新包已下载到：\n{path}\n\n当前运行方式不支持自动替换，是否打开所在文件夹？",
         )
         if open_folder:
-            if hasattr(self, "_open_path_in_file_manager"):
-                self._open_path_in_file_manager(path)
+            open_path = getattr(self, "_open_path_in_file_manager_callback", None)
+            if open_path is not None:
+                open_path(path)
             else:
                 webbrowser.open(str(path.parent))
 

@@ -1,4 +1,4 @@
-"""Background actions for scanning and applying sanitize mappings."""
+﻿"""Background actions for scanning and applying sanitize mappings."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from doc_sanitizer.mapping import MappingPayload
 from ..defaults import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 
 
-class SanitizeActionsMixin:
+class SanitizeActions:
     def load_mapping_json(self) -> None:
         path = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
         if not path:
@@ -140,6 +140,6 @@ class SanitizeActionsMixin:
         self.log_queue.put(("sanitize", f"[INFO] 脱敏完成: {output_path}"))
         self.log_queue.put(("sanitize", f"[INFO] 映射文件已输出: {mapping_path}"))
         self.log_queue.put(("sanitize", f"[WARN] 外部 AI 使用提醒: {self.ai_notice_text}"))
-        if not self.restore_mapping_var.get().strip():
-            self.restore_mapping_var.set(str(mapping_path))
+        self._set_restore_mapping_path_if_empty(mapping_path)
+
 

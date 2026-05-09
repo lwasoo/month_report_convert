@@ -4,15 +4,21 @@ from __future__ import annotations
 
 import json
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from doc_sanitizer.mapping import coerce_mapping_payload
+from doc_sanitizer.mapping import MappingPayload, coerce_mapping_payload
 from doc_sanitizer.prompt_builder import build_external_ai_prompt_sections, payload_from_json_text
 
 
-class PromptTabMixin:
+class PromptTabController:
+    def __init__(self, parent: ttk.Frame, *, root: tk.Tk, get_current_mapping: Callable[[], MappingPayload | None]) -> None:
+        self.root = root
+        self._get_current_mapping = get_current_mapping
+        self._build_prompt_tab(parent)
+
     def _build_prompt_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
@@ -123,10 +129,11 @@ class PromptTabMixin:
         self.prompt_status_var.set(f"已载入：{Path(path).name}")
 
     def use_current_mapping_for_prompt(self) -> None:
-        if not getattr(self, "current_mapping_data", None):
+        current_mapping = self._get_current_mapping()
+        if current_mapping is None:
             messagebox.showwarning("没有当前映射", "请先在脱敏页识别或载入映射 JSON。")
             return
-        raw = json.dumps(coerce_mapping_payload(self.current_mapping_data).to_dict(), ensure_ascii=False, indent=2)
+        raw = json.dumps(coerce_mapping_payload(current_mapping).to_dict(), ensure_ascii=False, indent=2)
         self.prompt_json_text.delete("1.0", tk.END)
         self.prompt_json_text.insert("1.0", raw)
         self.prompt_status_var.set("已使用当前脱敏映射")

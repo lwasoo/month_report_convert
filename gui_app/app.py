@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Desktop GUI composition and application lifecycle.
 
-The main window is assembled from tab and support mixins. This module owns shared Tk state,
-window setup, navigation, page construction, and command-line entry handling.
+The main window is assembled from page controllers and shared support helpers. This module
+owns window setup, navigation, page construction, and command-line entry handling.
 """
 
 from __future__ import annotations
@@ -20,14 +20,14 @@ import customtkinter as ctk
 
 from doc_sanitizer.mapping import MappingPayload
 
-from .convert.tab import ConvertTabMixin
+from .convert.tab import ConvertTabController
 from .defaults import APP_DISPLAY_NAME, APP_VERSION, DEFAULT_MODEL, DEFAULT_OLLAMA_URL
-from .prompt.tab import PromptTabMixin
-from .restore.tab import RestoreTabMixin
+from .prompt.tab import PromptTabController
+from .restore.tab import RestoreTabController
 from .runtime import RuntimeMixin
-from .sanitize.tab import SanitizeTabMixin
+from .sanitize.tab import SanitizeTabController
 from .style import StyleMixin
-from .update.about_tab import AboutTabMixin
+from .update.about_tab import AboutTabController
 from .update.preferences import is_auto_update_check_enabled
 from .widgets import SharedWidgetsMixin
 
@@ -49,11 +49,6 @@ class ConverterGUI(
     StyleMixin,
     SharedWidgetsMixin,
     RuntimeMixin,
-    ConvertTabMixin,
-    SanitizeTabMixin,
-    RestoreTabMixin,
-    PromptTabMixin,
-    AboutTabMixin,
 ):
     def __init__(self, root: tk.Tk, geometry: str | None = None) -> None:
         self.root = root
@@ -65,45 +60,14 @@ class ConverterGUI(
         self.process: subprocess.Popen[bytes] | None = None
         self.worker_running = False
 
-        self.docx_var = tk.StringVar()
-        self.template_var = tk.StringVar()
-        self.output_var = tk.StringVar()
         self.ollama_url_var = tk.StringVar(value=DEFAULT_OLLAMA_URL)
         self.model_var = tk.StringVar(value=DEFAULT_MODEL)
-        self.timeout_var = tk.StringVar(value="180")
-        self.retries_var = tk.StringVar(value="2")
-        self.no_llm_var = tk.BooleanVar(value=False)
-        self.layout_mode_var = tk.StringVar(value="formal")
-        self.theme_var = tk.StringVar(value="formal_blue")
-        self.diversity_var = tk.StringVar(value="none")
-        self.seed_var = tk.StringVar(value="0")
-        self.status_var = tk.StringVar(value="就绪")
+        self.convert_tab_controller: ConvertTabController | None = None
+        self.prompt_tab_controller: PromptTabController | None = None
+        self.about_tab_controller: AboutTabController | None = None
+        self.sanitize_tab_controller: SanitizeTabController | None = None
+        self.restore_tab_controller: RestoreTabController | None = None
 
-        self.sanitize_input_var = tk.StringVar()
-        self.sanitize_output_var = tk.StringVar()
-        self.sanitize_mapping_var = tk.StringVar()
-        self.sanitize_status_var = tk.StringVar(value="等待识别")
-        self.sanitize_use_llm_var = tk.BooleanVar(value=True)
-
-        self.restore_input_var = tk.StringVar()
-        self.restore_output_var = tk.StringVar()
-        self.restore_mapping_var = tk.StringVar()
-        self.restore_status_var = tk.StringVar(value="就绪")
-
-        self.manual_sensitive_var = tk.StringVar()
-        self.manual_placeholder_var = tk.StringVar()
-        self.mapping_search_var = tk.StringVar()
-        self.current_mapping_data: MappingPayload | None = None
-        self.scan_ready = False
-        self.mapping_applied = False
-        self.mapping_undo_snapshot: MappingPayload | None = None
-        self.mapping_search_after_id: str | None = None
-        self.mapping_editor: tk.Entry | None = None
-        self.mapping_editor_item: str | None = None
-        self.mapping_editor_column: str | None = None
-        self.batch_placeholder_text = "示例：\nCOMPANY|Google LLC\nPERSON|张三\n示例项目=>__PROJECT_008__\n某某科技有限公司"
-        self.manual_sensitive_placeholder = "输入敏感词，例如：Google LLC"
-        self.manual_placeholder_hint = "可留空；也可写 COMPANY 或 __COMPANY_010__"
         self.app_icon_image: tk.PhotoImage | None = None
         self.app_icon_images: list[tk.PhotoImage] = []
         self.nav_buttons: dict[str, ctk.CTkButton] = {}
@@ -113,12 +77,10 @@ class ConverterGUI(
         self._configure_style()
         self._apply_window_icon()
         self._build_ui()
-        self._setup_placeholder_hints()
-        self._update_sanitize_action_states()
         self._pump_logs()
         self.root.after(300, self.detect_models_async)
         if is_auto_update_check_enabled():
-            self.root.after(1800, lambda: self.check_updates_async(silent=True))
+            self.root.after(1800, self._check_updates_from_about_tab)
 
     def _resource_path(self, relative_path: str) -> Path:
         """Resolve assets both from source checkout and PyInstaller's temporary bundle."""
@@ -231,12 +193,76 @@ class ConverterGUI(
         for row, (key, title, subtitle) in enumerate(nav_items, start=2):
             self._add_nav_button(sidebar, row, key, title, subtitle)
 
-        self._build_convert_tab(convert_tab)
-        self._build_sanitize_tab(sanitize_tab)
-        self._build_restore_tab(restore_tab)
-        self._build_prompt_tab(prompt_tab)
-        self._build_about_tab(about_tab)
+        self.convert_tab_controller = ConvertTabController(
+            convert_tab,
+            model_var=self.model_var,
+            ollama_url_var=self.ollama_url_var,
+            add_path_row=self._add_path_row,
+            create_log_widget=self._create_log_widget,
+            detect_models=self.detect_models,
+            stop_task=self.stop_task,
+            resolve_script=self._resolve_script,
+            start_subprocess=self._start_subprocess,
+            is_process_running=self._is_process_running,
+        )
+        self.model_combo = self.convert_tab_controller.model_combo
+        self.log_text = self.convert_tab_controller.log_text
+        self.sanitize_tab_controller = SanitizeTabController(
+            sanitize_tab,
+            root=self.root,
+            log_queue=self.log_queue,
+            model_var=self.model_var,
+            ollama_url_var=self.ollama_url_var,
+            timeout_var=self.convert_tab_controller.timeout_var,
+            retries_var=self.convert_tab_controller.retries_var,
+            start_worker=self._start_worker,
+            unique_output_path=self._unique_output_path,
+            add_path_row=self._add_path_row,
+            create_log_widget=self._create_log_widget,
+            detect_models=self.detect_models,
+            set_restore_mapping_path_if_empty=self._set_restore_mapping_path_if_empty,
+            install_entry_placeholder=self._install_entry_placeholder,
+            install_text_placeholder=self._install_text_placeholder,
+        )
+        self.sanitize_model_combo = self.sanitize_tab_controller.sanitize_model_combo
+        self.mask_log_text = self.sanitize_tab_controller.mask_log_text
+        self.restore_tab_controller = RestoreTabController(
+            restore_tab,
+            root=self.root,
+            log_queue=self.log_queue,
+            start_worker=self._start_worker,
+            unique_output_path=self._unique_output_path,
+            create_log_widget=self._create_log_widget,
+            add_path_row=self._add_path_row,
+        )
+        self.restore_log_text = self.restore_tab_controller.restore_log_text
+        self.prompt_tab_controller = PromptTabController(
+            prompt_tab,
+            root=self.root,
+            get_current_mapping=self._current_sanitize_mapping,
+        )
+        self.about_tab_controller = AboutTabController(
+            about_tab,
+            root=self.root,
+            open_path_in_file_manager=self._open_path_in_file_manager,
+        )
         self._show_nav_page("sanitize")
+
+    def _set_restore_mapping_path_if_empty(self, mapping_path: Path) -> None:
+        if self.restore_tab_controller is not None:
+            self.restore_tab_controller.set_mapping_path_if_empty(mapping_path)
+
+    def _is_process_running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def _check_updates_from_about_tab(self) -> None:
+        if self.about_tab_controller is not None:
+            self.about_tab_controller.check_updates_async(silent=True)
+
+    def _current_sanitize_mapping(self) -> MappingPayload | None:
+        if self.sanitize_tab_controller is None:
+            return None
+        return self.sanitize_tab_controller.current_mapping_data
 
     def _add_nav_button(self, parent: ctk.CTkFrame, row: int, key: str, title: str, subtitle: str) -> None:
         colors = self._palette()

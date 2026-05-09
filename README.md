@@ -10,6 +10,20 @@
 
 > 重要提示：本工具只能辅助处理文档，不能保证 100% 消除保密、隐私、商业秘密或合规风险。对外发送、上传第三方系统、交给外部 AI 或正式归档前，请务必人工复核。
 
+## 要解决的问题
+
+很多文档工作流现在会经过外部 AI、在线编辑器或跨团队协作工具，但原始 Word / PowerPoint 里可能包含客户名称、项目代号、公司名称、人员姓名、金额、合同线索等不适合直接外发的内容。手工逐项替换容易漏，替换后又很难准确还原，尤其是外部 AI 可能会轻微改写占位符、删除部分句子或新增不在映射表里的编号。
+
+本工具的目标是把这类流程拆成可审核的几步：
+
+- 先从文档中识别候选敏感项，但不立即修改原文。
+- 由用户审核映射表，确认哪些内容需要替换。
+- 用稳定占位符生成脱敏文档，保留映射 JSON 作为还原凭据。
+- 给外部 AI 的 Prompt 只包含占位符规则，不包含原始敏感词。
+- 外部 AI 处理完成后，再按映射 JSON 尽量还原，并提示未能还原或疑似损坏的占位符。
+
+它解决的是“文档可以交给 AI 或外部流程处理，但敏感信息需要先可控地移除、事后可控地恢复”的问题。它不替代最终保密审核。
+
 ## 支持格式
 
 推荐格式：
@@ -47,6 +61,23 @@ ollama pull qwen2.5:7b-instruct-q4_K_M
 ```
 
 如果不使用本地模型，脱敏候选识别仍可走规则模式，但更依赖人工审核。
+
+## 模型接口
+
+默认配置面向 Ollama，因为它适合本地运行，且不会把文档内容发到第三方云服务。GUI 里的“模型”和“Ollama 地址”最终会传给内部 LLM 调用模块。
+
+当前代码默认调用 Ollama 风格的 HTTP API：
+
+- `/api/chat`
+- `/api/generate`
+- `/api/tags`
+
+因此模型并不一定只能是 Ollama 自带模型。只要你的模型网关、本地服务或内网服务能提供兼容的接口，就可以把地址填到 GUI 或 CLI 参数里。若使用 OpenAI、Azure、vLLM、LiteLLM、LM Studio 或公司内部模型平台，通常有两种接入方式：
+
+- 在外面加一层 Ollama-compatible / local gateway，把请求转换成目标平台格式。
+- 修改 `doc_sanitizer/llm_assist.py` 和 `report_converter/drafting_parts/llm_client.py`，把模型调用适配成目标 API。
+
+脱敏功能可以关闭模型辅助，完全走规则和人工审核；月报转 PPT 也可以使用 `--no-llm` 退回规则模式。
 
 ## 基本流程
 
@@ -209,23 +240,34 @@ bash scripts/build_macos.sh
 
 ## 代码结构
 
+代码分为入口层、GUI 层和核心能力层。核心逻辑不在最外层脚本里，而在 `doc_sanitizer/` 和 `report_converter/` 包内；GUI 和 CLI 都只是不同入口。
+
 主要入口：
 
 - `gui_converter.py`：启动 GUI。
 - `docx_to_ppt_converter.py`：月报转 PPT 命令行入口。
 - `sanitize_docx.py`：脱敏/还原相关命令行入口。
 
+入口关系：
+
+- GUI 的脱敏/还原页直接调用 `doc_sanitizer` 包内 API。
+- GUI 的月报转 PPT 页通过 `docx_to_ppt_converter.py` 或打包后的 `--run-cli` 子进程调用 `report_converter`，便于隔离长任务、停止任务并收集日志。
+- `sanitize_docx.py` 和 `docx_to_ppt_converter.py` 保留为命令行入口，适合自动化脚本、批处理、CI 或不启动 GUI 的场景。
+- `doc_sanitizer/engine.py` 和 `report_converter/engine.py` 是稳定 wrapper，兼容旧导入路径；新代码优先使用对应 services 层。
+
 GUI 模块：
 
-- `gui_app/app.py`：主窗口、导航和页面组装。
+- `gui_app/app.py`：应用壳，负责主窗口、导航、页面 controller 组装和命令行转发；不直接承载各页面业务方法。
 - `gui_app/runtime.py`：后台任务、日志桥接、模型探测、文件打开等运行时能力。
 - `gui_app/style.py`：主题和样式。
 - `gui_app/widgets.py`：共用控件。
-- `gui_app/convert/`：月报转 PPT 页。
-- `gui_app/sanitize/`：脱敏页 feature package，包含 layout、actions、table、mapping service。
-- `gui_app/restore/`：还原页。
-- `gui_app/prompt/`：外部 AI Prompt 生成页。
-- `gui_app/update/`：关于页、版本检查、用户更新偏好和自更新脚本。
+- `gui_app/convert/`：月报转 PPT 页 controller。
+- `gui_app/sanitize/`：脱敏页 controller，内部再拆分 layout、actions、table、mapping service。
+- `gui_app/restore/`：还原页 controller，内部拆分 layout、actions、repair planning 和 dialogs。
+- `gui_app/prompt/`：外部 AI Prompt 生成页 controller。
+- `gui_app/update/`：关于/更新页 controller、版本检查、用户更新偏好和自更新脚本。
+
+GUI 页面之间通过显式回调共享必要能力，例如当前映射读取、还原映射路径预填、日志组件和后台任务启动；页面私有方法不会直接挂到 `ConverterGUI` 上。
 
 脱敏/还原模块：
 

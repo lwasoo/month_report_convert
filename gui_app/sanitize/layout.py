@@ -1,4 +1,4 @@
-"""Layout and path-selection helpers for the sanitize tab."""
+﻿"""Layout and path-selection helpers for the sanitize tab."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 
-class SanitizeLayoutMixin:
+class SanitizeLayout:
     def _build_sanitize_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
@@ -281,4 +281,5 @@ class SanitizeLayoutMixin:
         self.initial_scan_button.configure(state=("disabled" if has_mapping else "normal"))
         self.rescan_button.configure(state=("normal" if has_mapping else "disabled"))
         self.apply_mapping_button.configure(state=("normal" if has_mapping else "disabled"))
+
 

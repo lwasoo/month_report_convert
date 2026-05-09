@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .tab import RestoreTabMixin
+from .tab import RestoreTabController
 
-__all__ = ["RestoreTabMixin"]
-
+__all__ = ["RestoreTabController"]

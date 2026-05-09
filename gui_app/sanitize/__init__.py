@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .tab import SanitizeTabMixin
+from .tab import SanitizeTabController
 
-__all__ = ["SanitizeTabMixin"]
-
+__all__ = ["SanitizeTabController"]

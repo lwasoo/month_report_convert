@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .tab import PromptTabMixin
+from .tab import PromptTabController
 
-__all__ = ["PromptTabMixin"]
-
+__all__ = ["PromptTabController"]

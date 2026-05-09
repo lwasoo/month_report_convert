@@ -1,4 +1,4 @@
-"""Background restore actions and worker logging."""
+﻿"""Background restore actions and worker logging."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from doc_sanitizer.mapping import mapping_entries
 from doc_sanitizer.placeholders.repair import unresolved_placeholder_tokens
 
 
-class RestoreActionsMixin:
+class RestoreActions:
     def start_restore(self) -> None:
         if not self._validate_restore_inputs():
             return
@@ -99,3 +99,4 @@ class RestoreActionsMixin:
     def _after_restore_complete(self, output_path: Path) -> None:
         self.restore_output_var.set(str(output_path))
         self.restore_status_var.set("已完成")
+

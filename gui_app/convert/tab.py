@@ -3,13 +3,68 @@
 from __future__ import annotations
 
 import sys
+import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from tkinter.scrolledtext import ScrolledText
 
 from ..defaults import DEFAULT_MODEL, DEFAULT_OLLAMA_URL
 
 
-class ConvertTabMixin:
+class ConvertTabController:
+    def __init__(
+        self,
+        parent: ttk.Frame,
+        *,
+        model_var: tk.StringVar,
+        ollama_url_var: tk.StringVar,
+        add_path_row: Callable[[ttk.Frame, int, str, tk.StringVar, Callable[[], None]], None],
+        create_log_widget: Callable[[ttk.Frame], ScrolledText],
+        detect_models: Callable[[], None],
+        stop_task: Callable[[], None],
+        resolve_script: Callable[[str], Path | None],
+        start_subprocess: Callable[[list[str], str, tk.StringVar, str], None],
+        is_process_running: Callable[[], bool],
+    ) -> None:
+        self.model_var = model_var
+        self.ollama_url_var = ollama_url_var
+        self._add_path_row_callback = add_path_row
+        self._create_log_widget_callback = create_log_widget
+        self.detect_models = detect_models
+        self.stop_task = stop_task
+        self._resolve_script_callback = resolve_script
+        self._start_subprocess_callback = start_subprocess
+        self._is_process_running = is_process_running
+
+        self.docx_var = tk.StringVar()
+        self.template_var = tk.StringVar()
+        self.output_var = tk.StringVar()
+        self.timeout_var = tk.StringVar(value="180")
+        self.retries_var = tk.StringVar(value="2")
+        self.no_llm_var = tk.BooleanVar(value=False)
+        self.layout_mode_var = tk.StringVar(value="formal")
+        self.theme_var = tk.StringVar(value="formal_blue")
+        self.diversity_var = tk.StringVar(value="none")
+        self.seed_var = tk.StringVar(value="0")
+        self.status_var = tk.StringVar(value="就绪")
+        self.model_combo: ttk.Combobox
+        self.log_text: ScrolledText
+
+        self._build_convert_tab(parent)
+
+    def _add_path_row(self, frame: ttk.Frame, row: int, label: str, var: tk.StringVar, browse_cmd: Callable[[], None]) -> None:
+        self._add_path_row_callback(frame, row, label, var, browse_cmd)
+
+    def _create_log_widget(self, parent: ttk.Frame) -> ScrolledText:
+        return self._create_log_widget_callback(parent)
+
+    def _resolve_script(self, script_name: str) -> Path | None:
+        return self._resolve_script_callback(script_name)
+
+    def _start_subprocess(self, cmd: list[str], target: str, status_var: tk.StringVar, start_msg: str) -> None:
+        self._start_subprocess_callback(cmd, target, status_var, start_msg)
+
     def _build_convert_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
@@ -120,7 +175,7 @@ class ConvertTabMixin:
         return True
 
     def start_convert(self) -> None:
-        if self.process and self.process.poll() is None:
+        if self._is_process_running():
             messagebox.showinfo("正在运行", "当前已有任务在运行。")
             return
         if not self._validate_convert_inputs():

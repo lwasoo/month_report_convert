@@ -1,4 +1,4 @@
-"""Layout and path selection for the restore tab."""
+﻿"""Layout and path selection for the restore tab."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 
-class RestoreLayoutMixin:
+class RestoreLayout:
     def _build_restore_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
@@ -80,3 +80,4 @@ class RestoreLayoutMixin:
             messagebox.showwarning("缺少参数", "请填写还原所需的文件 / 映射 / 输出路径。")
             return False
         return True
+

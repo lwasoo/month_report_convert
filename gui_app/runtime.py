@@ -231,7 +231,9 @@ class RuntimeMixin:
     def stop_task(self) -> None:
         if self.process and self.process.poll() is None:
             self.process.terminate()
-            self.status_var.set("已停止")
+            convert_tab = getattr(self, "convert_tab_controller", None)
+            if convert_tab is not None:
+                convert_tab.status_var.set("已停止")
             self.log_queue.put(("convert", "[INFO] 已请求停止任务。"))
             return
         self.log_queue.put(("convert", "[INFO] 当前无可终止的子进程任务。"))

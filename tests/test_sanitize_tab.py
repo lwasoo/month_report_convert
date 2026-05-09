@@ -1,4 +1,4 @@
-"""Tests for sanitize tab state transitions without launching the full GUI."""
+﻿"""Tests for sanitize tab state transitions without launching the full GUI."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from doc_sanitizer.mapping import MappingPayload
-from gui_app.sanitize.tab import SanitizeTabMixin
+from gui_app.sanitize.tab import SanitizeTabController
 
 
 class SanitizeTabNumberingTests(unittest.TestCase):
     """Exercise mapping editor behavior through a lightweight tab harness."""
 
     def test_existing_manual_number_moves_entry_to_category_tail(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         entries = [
             {"placeholder": "__COMPANY_001__", "original": "A", "category": "COMPANY"},
             {"placeholder": "__COMPANY_002__", "original": "B", "category": "COMPANY"},
@@ -30,7 +30,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(placeholder, "__COMPANY_004__")
 
     def test_batch_line_accepts_fullwidth_and_similar_pipe_separators(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
 
         self.assertEqual(tab._parse_batch_line("COMPANY\uff5cAcme"), ("Acme", "COMPANY", ""))
         self.assertEqual(tab._parse_batch_line("PERSON\u00a6Alice"), ("Alice", "PERSON", ""))
@@ -38,20 +38,20 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(tab._parse_batch_line("com\uff5c23"), ("23", "COM", ""))
 
     def test_batch_line_treats_custom_left_token_as_category(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
 
         sensitive, category, placeholder = tab._parse_batch_line("com|99")
 
         self.assertEqual((sensitive, category, placeholder), ("99", "COM", ""))
 
     def test_batch_line_uses_arrow_for_sensitive_term_to_placeholder(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
 
         self.assertEqual(tab._parse_batch_line("Acme=>COMPANY_009"), ("Acme", "", "COMPANY_009"))
         self.assertEqual(tab._parse_batch_line("Acme=>__COMPANY_009__"), ("Acme", "", "__COMPANY_009__"))
 
     def test_edit_after_apply_requires_confirmation_and_marks_dirty(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         tab.mapping_applied = True
         tab.sanitize_status_var = tk.StringVar(master=tk.Tcl())
         rows: list[tuple[str, str]] = []
@@ -66,7 +66,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertIn("重新生成脱敏文档", rows[0][1])
 
     def test_undo_mapping_change_restores_previous_snapshot(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         tab.current_mapping_data = {
             "entries": [
                 {"placeholder": "__COMPANY_001__", "original": "A", "category": "COMPANY", "enabled": True},
@@ -96,7 +96,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertIn("已撤销", rows[0][1])
 
     def test_undo_mapping_change_restores_applied_state_from_snapshot(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         tab.current_mapping_data = {
             "sanitized_file": r"C:\source_脱敏.docx",
             "entries": [
@@ -123,7 +123,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertTrue(tab.mapping_applied)
 
     def test_select_all_visible_mapping_entries_returns_break(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         selected: list[tuple[str, ...]] = []
         tab.mapping_tree = type(
             "FakeTree",
@@ -140,7 +140,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(selected, [("1", "2")])
 
     def test_mapping_search_refresh_is_debounced(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         calls: list[str] = []
         canceled: list[str] = []
 
@@ -165,7 +165,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertIsNone(tab.mapping_search_after_id)
 
     def test_clear_mapping_search_cancels_pending_debounce_and_refreshes_now(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         canceled: list[str] = []
         refreshed: list[str] = []
         tab.root = type("FakeRoot", (), {"after_cancel": lambda _self, after_id: canceled.append(after_id)})()
@@ -181,7 +181,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertIsNone(tab.mapping_search_after_id)
 
     def test_manual_entry_can_start_from_empty_mapping(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         root = tk.Tcl()
         tab.current_mapping_data = None
         tab.mapping_applied = False
@@ -201,7 +201,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(tab.current_mapping_data.entries[0].placeholder, "__COMPANY_001__")
 
     def test_source_change_can_clear_mapping_without_continuing_scan(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         tab.current_mapping_data = {
             "source_file": r"C:\old.docx",
             "entries": [{"placeholder": "__COMPANY_001__", "original": "A", "category": "COMPANY"}],
@@ -233,7 +233,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertIn("清空", rows[0][1])
 
     def test_source_change_can_keep_mapping_and_log_warning(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         tab.current_mapping_data = {
             "source_file": r"C:\old.docx",
             "entries": [{"placeholder": "__COMPANY_001__", "original": "A", "category": "COMPANY"}],
@@ -249,7 +249,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertIn("[WARN]", rows[0][1])
 
     def test_load_mapping_json_with_sanitized_file_marks_mapping_applied(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         root = tk.Tcl()
         tab.sanitize_mapping_var = tk.StringVar(master=root)
         tab.sanitize_input_var = tk.StringVar(master=root)
@@ -279,7 +279,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(tab.sanitize_output_var.get(), r"C:\source_脱敏.docx")
 
     def test_apply_mapping_worker_accepts_mapping_payload_dataclass(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         completed: list[tuple[Path, Path]] = []
         tab.root = type("FakeRoot", (), {"after": lambda _self, _delay, callback: callback()})()
         tab._after_apply_complete = lambda output_path, mapping_path: completed.append((output_path, mapping_path))
@@ -303,7 +303,7 @@ class SanitizeTabNumberingTests(unittest.TestCase):
         self.assertEqual(completed, [(Path("output.docx"), Path("mapping.json"))])
 
     def test_scan_mapping_worker_passes_mapping_payload_dataclass(self) -> None:
-        tab = object.__new__(SanitizeTabMixin)
+        tab = object.__new__(SanitizeTabController)
         completed: list[MappingPayload] = []
         existing = MappingPayload(
             entries=[

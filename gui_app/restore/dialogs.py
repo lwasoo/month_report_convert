@@ -1,4 +1,4 @@
-"""Restore tab dialogs for choosing placeholder repairs."""
+﻿"""Restore tab dialogs for choosing placeholder repairs."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from doc_sanitizer.mapping import MappingPayload
 from doc_sanitizer.placeholders.repair import PlaceholderRepair, closest_placeholder_for_token, placeholder_token_category
 
 
-class RestoreDialogsMixin:
+class RestoreDialogs:
     def _show_unknown_placeholder_dialog(self, tokens: list[str], payload: MappingPayload, items) -> dict[str, str] | None:
         labels_by_category, placeholder_by_label = self._placeholder_choice_labels(payload)
         rows: list[tuple[str, str, str, str]] = []
@@ -132,3 +132,4 @@ class RestoreDialogsMixin:
         dialog.protocol("WM_DELETE_WINDOW", cancel)
         self.root.wait_window(dialog)
         return result
+
